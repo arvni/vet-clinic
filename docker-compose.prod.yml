@@ -1,0 +1,54 @@
+# Single-server production stack. Needs a .env next to this file (see docker/prod.env.example).
+# Run: docker compose -f docker-compose.prod.yml up -d --build
+# Only nginx publishes a port; everything else stays on the internal network.
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${DB_DATABASE}
+      POSTGRES_USER: ${DB_USERNAME}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    command: postgres -c shared_buffers=128MB -c max_connections=30
+    volumes: [pgdata:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USERNAME} -d ${DB_DATABASE}"]
+      interval: 5s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: redis-server --maxmemory 64mb --maxmemory-policy noeviction --save 60 1000
+    volumes: [redisdata:/data]
+
+  api:
+    build: { context: ./api, target: app }
+    image: vet-clinic-api
+    restart: unless-stopped
+    env_file: .env
+    volumes: [storage:/var/www/api/storage]
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_started }
+
+  queue:
+    image: vet-clinic-api
+    restart: unless-stopped
+    command: php artisan queue:work --tries=3 --backoff=10 --max-time=3600
+    env_file: .env
+    volumes: [storage:/var/www/api/storage]
+    depends_on: [api]
+
+  nginx:
+    build: { context: ., dockerfile: docker/nginx/Dockerfile }
+    image: vet-clinic-nginx
+    restart: unless-stopped
+    ports: ["80:80"]
+    depends_on: [api]
+
+volumes:
+  pgdata:
+  redisdata:
+  storage:

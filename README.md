@@ -66,3 +66,15 @@ CI runs all of the above on every push and pull request.
 | Staff | Password, then SMS code (2FA); accounts created by an admin | `POST /api/v1/auth/staff/login`, `POST /api/v1/auth/staff/verify` |
 
 Tokens are Sanctum bearer tokens with an `owner` or `staff` ability; admin routes require `staff`.
+
+## Production
+
+One server runs everything through `docker-compose.prod.yml`; only nginx publishes a port.
+
+1. Copy `docker/prod.env.example` to `.env` beside the compose file and fill in `APP_KEY`, `APP_URL` and `DB_PASSWORD`.
+2. `docker compose -f docker-compose.prod.yml up -d --build`
+3. `docker compose -f docker-compose.prod.yml exec api php artisan migrate --force`
+4. `docker compose -f docker-compose.prod.yml exec api php artisan db:seed --force`
+5. `docker compose -f docker-compose.prod.yml exec api php artisan config:cache`
+
+With `SMS_DRIVER=fake`, login codes go to `storage/logs/laravel.log` in the `api` container instead of SMS.
