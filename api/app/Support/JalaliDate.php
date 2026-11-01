@@ -25,6 +25,20 @@ final class JalaliDate
         return ($locale ?? app()->getLocale()) === 'fa' ? Digits::toPersian($formatted) : $formatted;
     }
 
+    /** Format a calendar date (no time, no timezone), e.g. a birth date. */
+    public static function formatDate(CarbonInterface $date, string $pattern = 'Y/m/d', ?string $locale = null): string
+    {
+        $formatted = Jalalian::fromCarbon(Carbon::create($date->year, $date->month, $date->day, 12))->format($pattern);
+
+        return ($locale ?? app()->getLocale()) === 'fa' ? Digits::toPersian($formatted) : $formatted;
+    }
+
+    /** Convert a Jalali calendar date (Y/m/d) to a Gregorian Y-m-d string. */
+    public static function toGregorianDate(string $jalali): string
+    {
+        return self::parse($jalali)->setTimezone(self::TIMEZONE)->toDateString();
+    }
+
     /** Parse a Jalali date (Y/m/d, Persian or Latin digits) as Tehran midnight, returned in UTC. */
     public static function parse(string $jalali): Carbon
     {

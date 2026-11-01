@@ -41,6 +41,12 @@ class User extends Authenticatable
 
     protected string $guard_name = 'web';
 
+    protected $attributes = [
+        'locale' => 'fa',
+        'is_staff' => false,
+        'status' => self::STATUS_ACTIVE,
+    ];
+
     /** @var list<string> */
     protected $fillable = [
         'mobile',

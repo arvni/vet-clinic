@@ -8,6 +8,8 @@ use App\Modules\Identity\Sms\AllowlistSmsSender;
 use App\Modules\Identity\Sms\FakeSmsSender;
 use App\Modules\Identity\Sms\KavenegarSmsSender;
 use App\Modules\Identity\Sms\SmsSender;
+use App\Modules\Pets\Models\Pet;
+use App\Modules\Pets\PetPolicy;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Request;
@@ -45,6 +47,7 @@ class AppServiceProvider extends ServiceProvider
         // Coarse per-IP guard on all auth endpoints; finer limits live in OtpService.
         RateLimiter::for('auth', fn (Request $request) => Limit::perMinute(30)->by($request->ip()));
 
+        Gate::policy(Pet::class, PetPolicy::class);
         Gate::define('manage-staff', fn (User $user) => $user->hasRole(Role::Admin->value));
     }
 }
