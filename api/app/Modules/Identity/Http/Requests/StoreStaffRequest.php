@@ -6,11 +6,18 @@ namespace App\Modules\Identity\Http\Requests;
 
 use App\Modules\Identity\Role;
 use App\Support\PersianText;
+use Illuminate\Support\Facades\Gate;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\Rules\Password;
 
 class StoreStaffRequest extends MobileRequest
 {
+    /** Authorize before validating so unauthorized callers learn nothing from validation errors. */
+    public function authorize(): bool
+    {
+        return Gate::allows('manage-staff');
+    }
+
     protected function prepareForValidation(): void
     {
         parent::prepareForValidation();

@@ -10,7 +10,7 @@ class DatabaseSeeder extends Seeder
 {
     public function run(): void
     {
-        $this->call(RoleSeeder::class);
+        $this->call([RoleSeeder::class, BreedSeeder::class, ServiceSeeder::class]);
 
         // First admin from env so production never ships a default password.
         $mobile = config('seed.admin_mobile');

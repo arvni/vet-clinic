@@ -8,6 +8,7 @@ use App\Modules\Identity\Sms\AllowlistSmsSender;
 use App\Modules\Identity\Sms\FakeSmsSender;
 use App\Modules\Identity\Sms\KavenegarSmsSender;
 use App\Modules\Identity\Sms\SmsSender;
+use App\Modules\Identity\StaffAccess;
 use App\Modules\Pets\Models\Pet;
 use App\Modules\Pets\PetPolicy;
 use Illuminate\Cache\RateLimiting\Limit;
@@ -48,6 +49,7 @@ class AppServiceProvider extends ServiceProvider
         RateLimiter::for('auth', fn (Request $request) => Limit::perMinute(30)->by($request->ip()));
 
         Gate::policy(Pet::class, PetPolicy::class);
-        Gate::define('manage-staff', fn (User $user) => $user->hasRole(Role::Admin->value));
+        Gate::define('manage-staff', fn (User $user) => StaffAccess::check($user, Role::Admin));
+        Gate::define('manage-catalog', fn (User $user) => StaffAccess::check($user, Role::Admin));
     }
 }

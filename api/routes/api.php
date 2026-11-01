@@ -1,5 +1,7 @@
 <?php
 
+use App\Modules\Catalog\Http\Controllers\AdminCatalogController;
+use App\Modules\Catalog\Http\Controllers\CatalogController;
 use App\Modules\Files\FileController;
 use App\Modules\Identity\Http\Controllers\MeController;
 use App\Modules\Identity\Http\Controllers\OtpAuthController;
@@ -18,6 +20,14 @@ Route::prefix('v1')->group(function () {
         Route::post('otp/verify', [OtpAuthController::class, 'verify']);
         Route::post('staff/login', [StaffAuthController::class, 'login']);
         Route::post('staff/verify', [StaffAuthController::class, 'verify']);
+    });
+
+    // Public catalog (FR-2, FR-4.1)
+    Route::prefix('catalog')->middleware('throttle:60,1')->group(function () {
+        Route::get('species', [CatalogController::class, 'species']);
+        Route::get('breeds', [CatalogController::class, 'breeds']);
+        Route::get('services', [CatalogController::class, 'services']);
+        Route::get('vaccines', [CatalogController::class, 'vaccines']);
     });
 
     // Signed, short-lived file URLs (checked when issued inside an authorized response).
@@ -63,6 +73,14 @@ Route::prefix('v1')->group(function () {
         Route::prefix('admin')->middleware('abilities:staff')->group(function () {
             Route::get('staff', [StaffController::class, 'index']);
             Route::post('staff', [StaffController::class, 'store']);
+
+            Route::get('services', [AdminCatalogController::class, 'services']);
+            Route::post('services', [AdminCatalogController::class, 'storeService']);
+            Route::patch('services/{service}', [AdminCatalogController::class, 'updateService']);
+            Route::post('services/{service}/prices', [AdminCatalogController::class, 'storeServicePrice']);
+            Route::get('vaccines', [AdminCatalogController::class, 'vaccines']);
+            Route::post('vaccines', [AdminCatalogController::class, 'storeVaccine']);
+            Route::patch('vaccines/{vaccine}', [AdminCatalogController::class, 'updateVaccine']);
         });
     });
 });
