@@ -1,6 +1,7 @@
 <?php
 
 use App\Models\User;
+use App\Modules\Bookings\BookingPolicy;
 use App\Modules\Bookings\Models\Booking;
 use App\Modules\Catalog\Models\Service;
 use App\Modules\Identity\Role;
@@ -139,4 +140,97 @@ it('hides bookings from other owners', function () {
 
     $this->withToken($other)->getJson("/api/v1/bookings/{$id}")->assertNotFound();
     $this->withToken($other)->getJson('/api/v1/bookings')->assertJsonCount(0, 'data');
+});
+
+it('cancels inside the window and frees the slot', function () {
+    $this->travelTo(Carbon::parse('2026-11-07 08:00', 'Asia/Tehran'));
+    $id = $this->withToken($this->ownerToken)->postJson('/api/v1/bookings', [
+        'hold_token' => $this->withToken($this->ownerToken)->postJson('/api/v1/slot-holds', [
+            'service_id' => $this->service->id, 'vet_id' => $this->vet->id,
+            'starts_at' => Carbon::parse('2026-11-08 09:00', 'Asia/Tehran')->toIso8601String(),
+        ])->json('data.token'),
+        'pet_id' => $this->pet->id, 'location' => 'clinic',
+    ])->assertCreated()->assertJsonPath('data.can_cancel', true)->json('data.id');
+
+    $this->withToken($this->ownerToken)->postJson("/api/v1/bookings/{$id}/cancel", ['reason' => 'x'])
+        ->assertOk()->assertJsonPath('data.status', 'cancelled')->assertJsonPath('data.can_cancel', false);
+
+    expect(hold($this))->toBeString();
+});
+
+it('stops owners cancelling after the window', function () {
+    $id = book($this)->assertCreated()->assertJsonPath('data.can_cancel', false)->json('data.id');
+
+    $this->withToken($this->ownerToken)->postJson("/api/v1/bookings/{$id}/cancel")->assertStatus(409);
+});
+
+it('honours admin-set windows', function () {
+    $admin = User::factory()->staff(Role::Admin)->create()->createToken('staff-spa', ['staff'])->plainTextToken;
+    $this->withToken($admin)->putJson('/api/v1/admin/booking-policy', ['cancel_hours' => 0, 'reschedule_hours' => 0])
+        ->assertOk()->assertJsonPath('data.cancel_hours', 0);
+
+    $id = book($this)->assertJsonPath('data.can_cancel', true)->json('data.id');
+    $this->withToken($this->ownerToken)->postJson("/api/v1/bookings/{$id}/cancel")->assertOk();
+    $this->withToken($this->ownerToken)->postJson("/api/v1/bookings/{$id}/cancel")->assertStatus(409);
+});
+
+it('keeps the policy admin-only', function () {
+    $vet = $this->vet->createToken('staff-spa', ['staff'])->plainTextToken;
+
+    $this->withToken($vet)->putJson('/api/v1/admin/booking-policy', ['cancel_hours' => 1, 'reschedule_hours' => 1])->assertForbidden();
+});
+
+it('owes the home fee back only when paid and not dispatched', function () {
+    $this->withToken(User::factory()->staff(Role::Admin)->create()->createToken('staff-spa', ['staff'])->plainTextToken)
+        ->putJson('/api/v1/admin/booking-policy', ['cancel_hours' => 0, 'reschedule_hours' => 0]);
+    $id = book($this, ['location' => 'home', 'address_id' => $this->address->id])->json('data.id');
+    $booking = Booking::findOrFail($id);
+
+    $booking->update(['status' => Booking::CONFIRMED]);
+    expect(app(BookingPolicy::class)->refundDue($booking))->toBe(5_000_000);
+
+    $booking->update(['dispatched_at' => now()]);
+    expect(app(BookingPolicy::class)->refundDue($booking))->toBe(0);
+
+    $booking->update(['status' => Booking::PENDING_PAYMENT, 'dispatched_at' => null]);
+    $this->withToken($this->ownerToken)->postJson("/api/v1/bookings/{$id}/cancel")
+        ->assertOk()->assertJsonPath('data.refund_due.rials', '0');
+});
+
+it('reschedules within the window and keeps the price', function () {
+    $this->withToken(User::factory()->staff(Role::Admin)->create()->createToken('staff-spa', ['staff'])->plainTextToken)
+        ->putJson('/api/v1/admin/booking-policy', ['cancel_hours' => 0, 'reschedule_hours' => 0]);
+    $id = book($this)->json('data.id');
+    $this->service->prices()->create(['price_rials' => 20_000_000, 'effective_from' => now()]);
+
+    $this->withToken($this->ownerToken)->postJson("/api/v1/bookings/{$id}/reschedule", ['hold_token' => hold($this, '10:00')])
+        ->assertOk()
+        ->assertJsonPath('data.starts_at', Carbon::parse('2026-11-08 10:00', 'Asia/Tehran')->toIso8601ZuluString())
+        ->assertJsonPath('data.service_price.rials', '10000000');
+
+    // The old time is free again.
+    hold($this, '09:00');
+});
+
+it('refuses a reschedule with a hold for another service or after dispatch', function () {
+    $this->withToken(User::factory()->staff(Role::Admin)->create()->createToken('staff-spa', ['staff'])->plainTextToken)
+        ->putJson('/api/v1/admin/booking-policy', ['cancel_hours' => 0, 'reschedule_hours' => 0]);
+    $id = book($this)->json('data.id');
+
+    $other = Service::create(['code' => 'other', 'name_fa' => 'x', 'category' => 'visit', 'duration_minutes' => 30, 'locations' => ['clinic']]);
+    $token = $this->withToken($this->ownerToken)->postJson('/api/v1/slot-holds', [
+        'service_id' => $other->id, 'vet_id' => $this->vet->id,
+        'starts_at' => Carbon::parse('2026-11-08 10:00', 'Asia/Tehran')->toIso8601String(),
+    ])->json('data.token');
+    $this->withToken($this->ownerToken)->postJson("/api/v1/bookings/{$id}/reschedule", ['hold_token' => $token])->assertStatus(409);
+
+    Booking::findOrFail($id)->update(['dispatched_at' => now()]);
+    $this->withToken($this->ownerToken)->postJson("/api/v1/bookings/{$id}/reschedule", ['hold_token' => hold($this, '10:30')])->assertStatus(409);
+});
+
+it('keeps cancel and reschedule private to the owner', function () {
+    $id = book($this)->json('data.id');
+    $other = User::factory()->create()->createToken('owner-spa', ['owner'])->plainTextToken;
+
+    $this->withToken($other)->postJson("/api/v1/bookings/{$id}/cancel")->assertNotFound();
 });

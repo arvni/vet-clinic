@@ -69,6 +69,8 @@ class AppServiceProvider extends ServiceProvider
         Gate::define('manage-staff', fn (User $user) => StaffAccess::check($user, Role::Admin));
         Gate::define('manage-catalog', fn (User $user) => StaffAccess::check($user, Role::Admin));
         Gate::define('manage-schedules', fn (User $user) => StaffAccess::check($user, Role::Admin));
+        Gate::define('handle-emergencies', fn (User $user) => StaffAccess::check($user, Role::Dispatcher, Role::Vet, Role::Admin));
+        Gate::define('manage-invoices', fn (User $user) => StaffAccess::check($user, Role::Dispatcher, Role::Admin));
         Gate::define('manage-zones', fn (User $user) => StaffAccess::check($user, Role::Admin));
     }
 }

@@ -8,6 +8,7 @@ import { Bookings } from './pages/Bookings'
 import { Dashboard } from './pages/Dashboard'
 import { Login } from './pages/Login'
 import { PetProfile } from './pages/PetProfile'
+import { RescheduleBooking } from './pages/RescheduleBooking'
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -35,6 +36,7 @@ export default function App() {
             <Route path="/pets/:id" element={protectedRoute(<PetProfile />)} />
             <Route path="/pets/:id/book" element={protectedRoute(<BookVisit />)} />
             <Route path="/bookings" element={protectedRoute(<Bookings />)} />
+            <Route path="/bookings/:id/reschedule" element={protectedRoute(<RescheduleBooking />)} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </BrowserRouter>

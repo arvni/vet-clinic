@@ -120,6 +120,16 @@
       "pending_payment": "Awaiting payment",
       "confirmed": "Confirmed",
       "cancelled": "Cancelled"
-    }
+    },
+    "reschedule": "Reschedule",
+    "cancel": "Cancel booking",
+    "cancelConfirm": "Cancel this booking?",
+    "refundDue": "Refund due: {{amount}}",
+    "rescheduleTitle": "Reschedule {{name}}"
+  },
+  "emergency": {
+    "sent": "Your emergency request is in. We will call you back.",
+    "failed": "We couldn't send your request. Please call the clinic.",
+    "call": "Call the clinic: {{phone}}"
   }
 }

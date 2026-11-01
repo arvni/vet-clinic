@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\Bookings\Http\Controllers;
 
 use App\Models\User;
+use App\Modules\Bookings\BookingPolicy;
 use App\Modules\Bookings\Models\Booking;
 use App\Modules\Catalog\Models\Service;
 use App\Modules\Locations\Models\Address;
@@ -28,6 +29,8 @@ class BookingController
 {
     private const EXCLUSION_VIOLATION = '23P01';
 
+    public function __construct(private readonly BookingPolicy $policy) {}
+
     public function index(Request $request): JsonResponse
     {
         $bookings = Booking::query()
@@ -42,7 +45,7 @@ class BookingController
 
     public function show(Request $request, Booking $booking): JsonResponse
     {
-        abort_unless($booking->owner_id === $this->owner($request)->id, 404);
+        $this->assertOwned($request, $booking);
 
         return response()->json(['data' => $this->data($booking)]);
     }
@@ -123,6 +126,66 @@ class BookingController
         return response()->json(['data' => $this->data($booking)], 201);
     }
 
+    /** FR-3.5: inside the window the clinic must be called instead. */
+    public function cancel(Request $request, Booking $booking): JsonResponse
+    {
+        $this->assertOwned($request, $booking);
+        $data = $request->validate(['reason' => ['sometimes', 'nullable', 'string', 'max:500']]);
+
+        if (! $this->policy->canCancel($booking)) {
+            return response()->json(['message' => __('bookings.cancel_closed')], 409);
+        }
+
+        $booking->update([
+            'refund_due_rials' => $this->policy->refundDue($booking),
+            'status' => Booking::CANCELLED,
+            'cancelled_at' => now(),
+            'cancel_reason' => $data['reason'] ?? null,
+        ]);
+
+        return response()->json(['data' => $this->data($booking)]);
+    }
+
+    /** Moves a booking to a time the owner has held; price and place stay as booked. */
+    public function reschedule(Request $request, SlotHolds $holds, Booking $booking): JsonResponse
+    {
+        $this->assertOwned($request, $booking);
+        $data = $request->validate(['hold_token' => ['required', 'uuid']]);
+
+        if (! $this->policy->canReschedule($booking)) {
+            return response()->json(['message' => __('bookings.reschedule_closed')], 409);
+        }
+
+        $owner = $this->owner($request);
+        $hold = $holds->find($owner->id, $data['hold_token']);
+        if ($hold === null || $hold['service_id'] !== $booking->service_id) {
+            return response()->json(['message' => __('bookings.hold_expired')], 409);
+        }
+
+        try {
+            $booking->update([
+                'vet_id' => $hold['vet_id'],
+                'starts_at' => Carbon::parse($hold['starts_at']),
+                'ends_at' => Carbon::parse($hold['ends_at']),
+            ]);
+        } catch (QueryException $e) {
+            if ($e->getCode() === self::EXCLUSION_VIOLATION) {
+                return response()->json(['message' => __('scheduling.slot_unavailable')], 409);
+            }
+
+            throw $e;
+        }
+
+        $holds->release($owner->id, $data['hold_token']);
+
+        return response()->json(['data' => $this->data($booking->fresh() ?? $booking)]);
+    }
+
+    private function assertOwned(Request $request, Booking $booking): void
+    {
+        abort_unless($booking->owner_id === $this->owner($request)->id, 404);
+    }
+
     private function owner(Request $request): User
     {
         /** @var User $user */
@@ -147,6 +210,9 @@ class BookingController
             'service_price' => $booking->service_price_rials === null ? null : Money::rials($booking->service_price_rials),
             'home_visit_fee' => Money::rials($booking->home_visit_fee_rials),
             'notes' => $booking->notes,
+            'refund_due' => Money::rials($booking->refund_due_rials),
+            'can_cancel' => $this->policy->canCancel($booking),
+            'can_reschedule' => $this->policy->canReschedule($booking),
         ];
     }
 }

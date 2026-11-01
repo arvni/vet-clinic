@@ -28,6 +28,10 @@ use Illuminate\Support\Carbon;
  * @property int|null $service_price_rials
  * @property int $home_visit_fee_rials
  * @property string|null $notes
+ * @property Carbon|null $dispatched_at
+ * @property Carbon|null $cancelled_at
+ * @property string|null $cancel_reason
+ * @property int $refund_due_rials
  */
 class Booking extends Model
 {
@@ -39,11 +43,12 @@ class Booking extends Model
 
     public const CANCELLED = 'cancelled';
 
-    protected $attributes = ['home_visit_fee_rials' => 0];
+    protected $attributes = ['home_visit_fee_rials' => 0, 'refund_due_rials' => 0];
 
     protected $fillable = [
         'owner_id', 'pet_id', 'service_id', 'vet_id', 'location', 'address_id', 'zone_id',
         'starts_at', 'ends_at', 'status', 'service_price_rials', 'home_visit_fee_rials', 'notes',
+        'dispatched_at', 'cancelled_at', 'cancel_reason', 'refund_due_rials',
     ];
 
     protected function casts(): array
@@ -53,6 +58,9 @@ class Booking extends Model
             'ends_at' => 'datetime',
             'service_price_rials' => 'integer',
             'home_visit_fee_rials' => 'integer',
+            'dispatched_at' => 'datetime',
+            'cancelled_at' => 'datetime',
+            'refund_due_rials' => 'integer',
         ];
     }
 

@@ -1,5 +1,6 @@
 import { useTranslation } from 'react-i18next'
 import { Link } from 'react-router-dom'
+import { EmergencyButton } from '../components/EmergencyButton'
 import { useAuth } from '../auth/AuthContext'
 import { AppShell, Card } from '../components/AppShell'
 import { PetAge } from '../components/PetAge'
@@ -18,10 +19,8 @@ export function Dashboard() {
         {user?.name ? (i18n.language === 'fa' ? `، ${user.name}` : `, ${user.name}`) : ''}
       </h1>
 
-      {/* Emergency stays visible on owner screens (FR-3.4); booking flow arrives in S2. */}
-      <button type="button" className="w-full rounded-xl bg-danger-600 py-3 text-lg font-semibold text-white shadow-sm">
-        {t('dashboard.emergency')}
-      </button>
+      {/* Emergency stays visible on owner screens (FR-3.4). */}
+      <EmergencyButton />
 
       <Link to="/bookings" className="block rounded-2xl bg-white p-4 text-sm font-medium ring-1 ring-slate-200">
         {t('booking.mine')}

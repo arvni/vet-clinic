@@ -61,6 +61,9 @@ export interface Booking {
   address: string | null
   service_price: MoneyValue | null
   home_visit_fee: MoneyValue
+  refund_due: MoneyValue
+  can_cancel: boolean
+  can_reschedule: boolean
 }
 
 const intlLocale = (lang: string) => (lang === 'fa' ? 'fa-IR-u-ca-persian' : 'en-GB')
@@ -170,5 +173,22 @@ export function useBookings() {
   return useQuery({
     queryKey: ['bookings'],
     queryFn: async () => (await api.get<{ data: Booking[] }>('/bookings')).data.data,
+  })
+}
+
+export function useCancelBooking() {
+  const client = useQueryClient()
+  return useMutation({
+    mutationFn: async (id: number) => (await api.post<{ data: Booking }>(`/bookings/${id}/cancel`)).data.data,
+    onSuccess: () => client.invalidateQueries({ queryKey: ['bookings'] }),
+  })
+}
+
+export function useRescheduleBooking() {
+  const client = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ id, hold_token }: { id: number; hold_token: string }) =>
+      (await api.post<{ data: Booking }>(`/bookings/${id}/reschedule`, { hold_token })).data.data,
+    onSuccess: () => client.invalidateQueries({ queryKey: ['bookings'] }),
   })
 }

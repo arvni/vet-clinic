@@ -20,6 +20,10 @@ return [
             'fa' => env('SMS_TEMPLATE_OTP_FA', 'vet-otp-fa'),
             'en' => env('SMS_TEMPLATE_OTP_EN', 'vet-otp-en'),
         ],
+        'emergency' => [
+            'fa' => env('SMS_TEMPLATE_EMERGENCY_FA', 'vet-emergency-fa'),
+            'en' => env('SMS_TEMPLATE_EMERGENCY_EN', 'vet-emergency-en'),
+        ],
     ],
 
     /*
