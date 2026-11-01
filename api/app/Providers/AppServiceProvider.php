@@ -9,6 +9,9 @@ use App\Modules\Identity\Sms\FakeSmsSender;
 use App\Modules\Identity\Sms\KavenegarSmsSender;
 use App\Modules\Identity\Sms\SmsSender;
 use App\Modules\Identity\StaffAccess;
+use App\Modules\Locations\Maps\FakeMapProvider;
+use App\Modules\Locations\Maps\MapProvider;
+use App\Modules\Locations\Maps\NeshanMapProvider;
 use App\Modules\Pets\Models\Pet;
 use App\Modules\Pets\PetPolicy;
 use Illuminate\Cache\RateLimiting\Limit;
@@ -39,6 +42,20 @@ class AppServiceProvider extends ServiceProvider
                 ? new AllowlistSmsSender($sender, $allowlist)
                 : $sender;
         });
+
+        $this->app->singleton(MapProvider::class, fn (): MapProvider => $this->mapProvider());
+    }
+
+    private function mapProvider(): MapProvider
+    {
+        return match (config('maps.driver')) {
+            'fake' => new FakeMapProvider,
+            'neshan' => new NeshanMapProvider(
+                (string) config('maps.neshan.api_key'),
+                (string) config('maps.neshan.base_url'),
+            ),
+            default => throw new InvalidArgumentException('Unknown map driver ['.config('maps.driver').']'),
+        };
     }
 
     public function boot(): void
@@ -51,5 +68,7 @@ class AppServiceProvider extends ServiceProvider
         Gate::policy(Pet::class, PetPolicy::class);
         Gate::define('manage-staff', fn (User $user) => StaffAccess::check($user, Role::Admin));
         Gate::define('manage-catalog', fn (User $user) => StaffAccess::check($user, Role::Admin));
+        Gate::define('manage-schedules', fn (User $user) => StaffAccess::check($user, Role::Admin));
+        Gate::define('manage-zones', fn (User $user) => StaffAccess::check($user, Role::Admin));
     }
 }
