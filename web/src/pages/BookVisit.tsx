@@ -1,9 +1,19 @@
-import { useState } from 'react'
+import { useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Link, useNavigate, useParams } from 'react-router-dom'
-import { AppShell, Card, Field, buttonClass, inputClass } from '../components/AppShell'
+import { useNavigate, useParams } from 'react-router-dom'
+import { AppShell, ChoiceCard, EmptyState, Field, buttonClass, inputClass } from '../components/AppShell'
+import {
+  CalendarIcon,
+  CheckIcon,
+  ChevronIcon,
+  ClinicIcon,
+  HomeIcon,
+  PawIcon,
+  VideoIcon,
+} from '../components/Icons'
 import {
   dayOptions,
+  formatDateTime,
   formatTime,
   reverseGeocode,
   servicesFor,
@@ -16,14 +26,25 @@ import {
   type Address,
   type BookingLocation,
   type Hold,
+  type Service,
   type Slot,
 } from '../lib/bookings'
+import { localizeDigits } from '../lib/digits'
 import { errorMessage, fieldErrors } from '../lib/errors'
 import { formatMoney } from '../lib/money'
 import { usePet } from '../lib/pets'
 
 const chip = (selected: boolean) =>
-  `rounded-xl px-3 py-2 text-sm ring-1 ${selected ? 'bg-brand-600 text-white ring-brand-600' : 'bg-white ring-slate-200'}`
+  `min-h-11 rounded-xl px-3 py-2 text-sm font-medium ring-1 ${selected ? 'bg-brand-600 text-white ring-brand-600' : 'bg-white ring-slate-200'}`
+
+const STEPS = ['service', 'place', 'time', 'confirm'] as const
+type Step = (typeof STEPS)[number]
+
+const PLACE_ICONS: Record<BookingLocation, ReactNode> = {
+  clinic: <ClinicIcon />,
+  home: <HomeIcon />,
+  online: <VideoIcon />,
+}
 
 export function BookVisit() {
   const { id } = useParams()
@@ -33,6 +54,7 @@ export function BookVisit() {
   const pet = usePet(petId)
   const services = useServices()
 
+  const [step, setStep] = useState<Step>('service')
   const [serviceId, setServiceId] = useState<number | null>(null)
   const [location, setLocation] = useState<BookingLocation | null>(null)
   const [address, setAddress] = useState<Address | null>(null)
@@ -49,13 +71,35 @@ export function BookVisit() {
   const service = available.find((s) => s.id === serviceId) ?? null
   const days = dayOptions(i18n.language)
   const needsAddress = location === 'home'
-  const placeReady = location !== null && (!needsAddress || !!address?.zone)
+  const money = (rials: string) => formatMoney(rials, i18n.language)
+  const fa = (n: number) => localizeDigits(n, i18n.language)
 
   const clearSlot = () => {
     setSlot(null)
     setHold(null)
     holdSlot.reset()
     createBooking.reset()
+  }
+
+  const chooseService = (next: Service) => {
+    setServiceId(next.id)
+    setAddress(null)
+    setDate(null)
+    clearSlot()
+    // One place on offer means there is no question to ask.
+    if (next.locations.length === 1 && next.locations[0] !== 'home') {
+      setLocation(next.locations[0])
+      setStep('time')
+    } else {
+      setLocation(next.locations.length === 1 ? next.locations[0] : null)
+      setStep('place')
+    }
+  }
+
+  const choosePlace = (next: BookingLocation) => {
+    setLocation(next)
+    clearSlot()
+    if (next !== 'home') setStep('time')
   }
 
   const pickSlot = async (next: Slot) => {
@@ -66,6 +110,7 @@ export function BookVisit() {
     if (taken) {
       setSlot(next)
       setHold(taken)
+      setStep('confirm')
     } else {
       await slots.refetch()
     }
@@ -85,95 +130,136 @@ export function BookVisit() {
     if (booking) navigate('/bookings', { replace: true })
   }
 
+  const back = () => {
+    const skipPlace = service?.locations.length === 1 && service.locations[0] !== 'home'
+    if (step === 'service') navigate(`/pets/${petId}`)
+    else if (step === 'place') setStep('service')
+    else if (step === 'time') setStep(skipPlace ? 'service' : 'place')
+    else setStep('time')
+  }
+
   if (pet.isLoading) return <AppShell>{t('dashboard.loading')}</AppShell>
   if (!pet.data) return <AppShell>{t('errors.generic')}</AppShell>
 
   return (
     <AppShell>
-      <Link to={`/pets/${petId}`} className="text-sm text-slate-600 underline">
+      <button type="button" onClick={back} className="inline-flex items-center gap-1 py-1 text-sm font-medium text-slate-600">
+        <ChevronIcon width={18} height={18} className="rotate-180" />
         {t('common.back')}
-      </Link>
+      </button>
 
-      <Card title={t('booking.titleFor', { name: pet.data.name })}>
-        <div className="space-y-5">
-          <Field label={t('booking.service')}>
-            <select
-              className={inputClass}
-              value={serviceId ?? ''}
-              onChange={(e) => {
-                setServiceId(Number(e.target.value))
-                setLocation(null)
-                setAddress(null)
-                setDate(null)
-                clearSlot()
-              }}
-            >
-              <option value="" disabled />
-              {available.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.name}
-                </option>
+      <h1 className="text-2xl font-bold">{t('booking.titleFor', { name: pet.data.name })}</h1>
+
+      <ol className="flex gap-1.5" aria-label={t('booking.progress')}>
+        {STEPS.map((s, i) => (
+          <li
+            key={s}
+            aria-current={s === step ? 'step' : undefined}
+            className={`h-1.5 flex-1 rounded-full ${i <= STEPS.indexOf(step) ? 'bg-brand-600' : 'bg-slate-200'}`}
+          />
+        ))}
+      </ol>
+      <p className="text-sm text-slate-600">
+        {t('booking.stepOf', { step: fa(STEPS.indexOf(step) + 1), total: fa(STEPS.length) })}
+      </p>
+
+      {step === 'service' && (
+        <section className="space-y-2">
+          <h2 className="text-lg font-semibold">{t('booking.whatDoesNeed', { name: pet.data.name })}</h2>
+          {services.isLoading && <p className="text-sm text-slate-600">{t('dashboard.loading')}</p>}
+          {available.map((s) => (
+            <ChoiceCard
+              key={s.id}
+              icon={<PawIcon />}
+              title={s.name}
+              detail={t('booking.minutes', { count: s.duration_minutes, n: fa(s.duration_minutes) })}
+              selected={s.id === serviceId}
+              onClick={() => chooseService(s)}
+              trailing={
+                <span className="text-sm font-semibold text-brand-700">
+                  {s.price ? money(s.price.rials) : t('booking.priceOnRequest')}
+                </span>
+              }
+            />
+          ))}
+        </section>
+      )}
+
+      {step === 'place' && service && (
+        <section className="space-y-2">
+          <h2 className="text-lg font-semibold">{t('booking.where')}</h2>
+          {service.locations.map((l) => (
+            <ChoiceCard
+              key={l}
+              icon={PLACE_ICONS[l]}
+              title={t(`booking.location.${l}`)}
+              detail={t(`booking.locationHint.${l}`)}
+              selected={location === l}
+              onClick={() => choosePlace(l)}
+            />
+          ))}
+
+          {needsAddress && (
+            <div className="rounded-2xl bg-white p-4 ring-1 ring-slate-200">
+              <AddressPicker selected={address} onSelect={setAddress} />
+              {address?.zone && (
+                <div className="mt-3 space-y-2">
+                  <p className="text-sm text-slate-600">
+                    {t('booking.homeFeeNote', { amount: money(address.zone.home_visit_fee.rials) })}
+                  </p>
+                  <button type="button" className={`${buttonClass} w-full`} onClick={() => setStep('time')}>
+                    {t('booking.next')}
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+        </section>
+      )}
+
+      {step === 'time' && (
+        <section className="space-y-4">
+          <div>
+            <h2 className="mb-2 text-lg font-semibold">{t('booking.day')}</h2>
+            <div className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1">
+              {days.map((d) => (
+                <button
+                  key={d.date}
+                  type="button"
+                  className={`${chip(date === d.date)} shrink-0`}
+                  onClick={() => {
+                    setDate(d.date)
+                    clearSlot()
+                  }}
+                >
+                  {d.label}
+                </button>
               ))}
-            </select>
-          </Field>
+            </div>
+          </div>
 
-          {service && (
-            <Field label={t('booking.where')}>
-              <div className="flex flex-wrap gap-2">
-                {service.locations.map((l) => (
-                  <button
-                    key={l}
-                    type="button"
-                    className={chip(location === l)}
-                    onClick={() => {
-                      setLocation(l)
-                      clearSlot()
-                    }}
-                  >
-                    {t(`booking.location.${l}`)}
-                  </button>
-                ))}
-              </div>
-            </Field>
-          )}
-
-          {needsAddress && <AddressPicker selected={address} onSelect={setAddress} />}
-
-          {placeReady && (
-            <Field label={t('booking.day')}>
-              <div className="flex gap-2 overflow-x-auto pb-1">
-                {days.map((d) => (
-                  <button
-                    key={d.date}
-                    type="button"
-                    className={`${chip(date === d.date)} shrink-0`}
-                    onClick={() => {
-                      setDate(d.date)
-                      clearSlot()
-                    }}
-                  >
-                    {d.label}
-                  </button>
-                ))}
-              </div>
-            </Field>
-          )}
-
-          {placeReady && date && (
-            <Field label={t('booking.time')}>
+          {date ? (
+            <div>
+              <h2 className="mb-2 text-lg font-semibold">{t('booking.time')}</h2>
               {slots.isLoading && <p className="text-sm text-slate-600">{t('dashboard.loading')}</p>}
-              {slots.data?.length === 0 && <p className="text-sm text-slate-600">{t('booking.noSlots')}</p>}
-              <div className="flex flex-wrap gap-2">
+              {slots.data?.length === 0 && (
+                <EmptyState
+                  icon={<CalendarIcon width={32} height={32} />}
+                  title={t('booking.noSlots')}
+                  hint={t('booking.noSlotsHint')}
+                />
+              )}
+              <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
                 {slots.data?.map((s) => (
                   <button
                     key={`${s.vet_id}-${s.starts_at}`}
                     type="button"
                     disabled={holdSlot.isPending}
                     className={chip(slot?.vet_id === s.vet_id && slot.starts_at === s.starts_at)}
+                    title={s.vet_name ?? undefined}
                     onClick={() => pickSlot(s)}
                   >
                     {formatTime(s.starts_at, i18n.language)}
-                    {s.vet_name ? ` · ${s.vet_name}` : ''}
                   </button>
                 ))}
               </div>
@@ -182,53 +268,68 @@ export function BookVisit() {
                   {errorMessage(holdSlot.error, t('errors.generic'))}
                 </p>
               )}
-            </Field>
+            </div>
+          ) : (
+            <p className="text-sm text-slate-600">{t('booking.pickDayFirst')}</p>
           )}
+        </section>
+      )}
 
-          {hold && service && (
-            <>
-              <p className="text-sm text-slate-600">
-                {t('booking.heldUntil', { time: formatTime(hold.expires_at, i18n.language) })}
-              </p>
-
-              <Field label={`${t('booking.notes')} (${t('common.optional')})`}>
-                <textarea className={inputClass} rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} />
-              </Field>
-
-              <dl className="space-y-1 text-sm">
-                <div className="flex justify-between">
-                  <dt>{service.name}</dt>
-                  <dd>
-                    {service.price ? formatMoney(service.price.rials, i18n.language) : t('booking.priceOnRequest')}
-                  </dd>
-                </div>
-                {needsAddress && address?.zone && (
-                  <div className="flex justify-between">
-                    <dt>{t('booking.homeFee')}</dt>
-                    <dd>{formatMoney(address.zone.home_visit_fee.rials, i18n.language)}</dd>
-                  </div>
-                )}
-              </dl>
-
-              {createBooking.isError && (
-                <p role="alert" className="text-sm text-danger-600">
-                  {errorMessage(createBooking.error, t('errors.generic'))}
-                </p>
+      {step === 'confirm' && hold && service && slot && location && (
+        <section className="space-y-4">
+          <div className="rounded-2xl bg-white p-4 ring-1 ring-slate-200">
+            <h2 className="mb-3 text-lg font-semibold">{t('booking.review')}</h2>
+            <dl className="space-y-2 text-sm">
+              <Row label={t('booking.service')} value={service.name} />
+              <Row label={t('booking.when')} value={formatDateTime(slot.starts_at, i18n.language)} />
+              <Row label={t('booking.where')} value={address && needsAddress ? address.label : t(`booking.location.${location}`)} />
+              {slot.vet_name && <Row label={t('booking.vet')} value={slot.vet_name} />}
+              <hr className="border-slate-200" />
+              <Row
+                label={service.name}
+                value={service.price ? money(service.price.rials) : t('booking.priceOnRequest')}
+              />
+              {needsAddress && address?.zone && (
+                <Row label={t('booking.homeFee')} value={money(address.zone.home_visit_fee.rials)} />
               )}
+            </dl>
+          </div>
 
-              <button
-                type="button"
-                disabled={createBooking.isPending}
-                className={`${buttonClass} w-full`}
-                onClick={confirm}
-              >
-                {t('booking.confirm')}
-              </button>
-            </>
+          <p className="rounded-xl bg-brand-50 px-3 py-2 text-sm text-brand-700">
+            {t('booking.heldUntil', { time: formatTime(hold.expires_at, i18n.language) })}
+          </p>
+
+          <Field label={`${t('booking.notes')} (${t('common.optional')})`}>
+            <textarea className={inputClass} rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} />
+          </Field>
+
+          {createBooking.isError && (
+            <p role="alert" className="text-sm text-danger-600">
+              {errorMessage(createBooking.error, t('errors.generic'))}
+            </p>
           )}
-        </div>
-      </Card>
+
+          <button
+            type="button"
+            disabled={createBooking.isPending}
+            className={`${buttonClass} w-full text-lg`}
+            onClick={confirm}
+          >
+            <CheckIcon />
+            {t('booking.confirm')}
+          </button>
+        </section>
+      )}
     </AppShell>
+  )
+}
+
+function Row({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex justify-between gap-4">
+      <dt className="text-slate-600">{label}</dt>
+      <dd className="text-end font-medium">{value}</dd>
+    </div>
   )
 }
 

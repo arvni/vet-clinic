@@ -15,7 +15,9 @@
     "resend": "Resend code",
     "changeMobile": "Change number",
     "invalidMobile": "Mobile number is not valid",
-    "logout": "Sign out"
+    "logout": "Sign out",
+    "tagline": "Pet care made simple",
+    "noPassword": "No password needed. We'll text a code to your mobile."
   },
   "dashboard": {
     "welcome": "Welcome",
@@ -23,7 +25,9 @@
     "noPets": "You haven't added a pet yet",
     "emergency": "Emergency",
     "addPet": "Add a pet",
-    "loading": "Loading…"
+    "loading": "Loading…",
+    "nextVisit": "Next visit",
+    "noPetsHint": "Add your pet first, then you can book a visit."
   },
   "errors": {
     "generic": "Something went wrong. Please try again.",
@@ -125,11 +129,46 @@
     "cancel": "Cancel booking",
     "cancelConfirm": "Cancel this booking?",
     "refundDue": "Refund due: {{amount}}",
-    "rescheduleTitle": "Reschedule {{name}}"
+    "rescheduleTitle": "Reschedule {{name}}",
+    "pay": "Pay",
+    "whichPet": "Which pet is this for?",
+    "addPetFirst": "Add your pet first to book a visit.",
+    "progress": "Booking steps",
+    "stepOf": "Step {{step}} of {{total}}",
+    "whatDoesNeed": "What does {{name}} need?",
+    "minutes_one": "About {{n}} minute",
+    "minutes_other": "About {{n}} minutes",
+    "locationHint": {
+      "clinic": "Come to the clinic",
+      "home": "A vet comes to your home",
+      "online": "Video consult from anywhere"
+    },
+    "homeFeeNote": "Home-visit fee for this address: {{amount}}",
+    "next": "Continue",
+    "noSlotsHint": "Try another day.",
+    "pickDayFirst": "Pick a day to see free times.",
+    "review": "Review your booking",
+    "when": "When",
+    "vet": "Vet",
+    "noneHint": "Book your first visit now."
   },
   "emergency": {
     "sent": "Your emergency request is in. We will call you back.",
     "failed": "We couldn't send your request. Please call the clinic.",
-    "call": "Call the clinic: {{phone}}"
+    "call": "Call the clinic: {{phone}}",
+    "hint": "Tap here if it's urgent"
+  },
+  "payment": {
+    "title": "Payment result",
+    "paid": "Payment succeeded and your booking is confirmed.",
+    "pending": "We don't have the payment result yet. Check your booking again shortly.",
+    "needs_review": "We received your money but couldn't apply it to the invoice. We will contact you about a refund.",
+    "failed": "The payment did not go through."
+  },
+  "nav": {
+    "label": "Main menu",
+    "home": "Home",
+    "book": "New visit",
+    "bookings": "My bookings"
   }
 }

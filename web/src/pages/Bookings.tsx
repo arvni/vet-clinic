@@ -1,8 +1,10 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link } from 'react-router-dom'
-import { AppShell, Card } from '../components/AppShell'
-import { formatDateTime, useBookings, useCancelBooking, type Booking } from '../lib/bookings'
+import { AppShell, Card, EmptyState, buttonClass } from '../components/AppShell'
+import { BookingStatus } from '../components/BookingStatus'
+import { CalendarIcon, PlusIcon } from '../components/Icons'
+import { formatDateTime, useBookings, useCancelBooking, usePayBooking, type Booking } from '../lib/bookings'
 import { errorMessage } from '../lib/errors'
 import { formatMoney } from '../lib/money'
 
@@ -12,9 +14,6 @@ export function Bookings() {
 
   return (
     <AppShell>
-      <Link to="/" className="text-sm text-slate-600 underline">
-        {t('common.back')}
-      </Link>
       <Card title={t('booking.mine')}>
         {bookings.isLoading && <p className="text-sm text-slate-600">{t('dashboard.loading')}</p>}
         {bookings.isError && (
@@ -22,7 +21,19 @@ export function Bookings() {
             {errorMessage(bookings.error, t('errors.generic'))}
           </p>
         )}
-        {bookings.data?.length === 0 && <p className="text-sm text-slate-600">{t('booking.none')}</p>}
+        {bookings.data?.length === 0 && (
+          <EmptyState
+            icon={<CalendarIcon width={32} height={32} />}
+            title={t('booking.none')}
+            hint={t('booking.noneHint')}
+            action={
+              <Link to="/book" className={buttonClass}>
+                <PlusIcon />
+                {t('booking.book')}
+              </Link>
+            }
+          />
+        )}
         <ul className="divide-y divide-slate-200">
           {bookings.data?.map((b) => <BookingRow key={b.id} booking={b} />)}
         </ul>
@@ -34,6 +45,7 @@ export function Bookings() {
 function BookingRow({ booking }: { booking: Booking }) {
   const { t, i18n } = useTranslation()
   const cancel = useCancelBooking()
+  const pay = usePayBooking()
   const [confirming, setConfirming] = useState(false)
   // Home visits owe the zone fee up front; prepaid services owe the service price.
   const due = booking.location === 'home' ? booking.home_visit_fee : booking.service_price
@@ -44,7 +56,7 @@ function BookingRow({ booking }: { booking: Booking }) {
         <span>
           {booking.service.name} · {booking.pet.name}
         </span>
-        <span>{t(`booking.status.${booking.status}`)}</span>
+        <BookingStatus status={booking.status} />
       </div>
       <p className="text-slate-600">
         {formatDateTime(booking.starts_at, i18n.language)} · {t(`booking.location.${booking.location}`)}
@@ -52,6 +64,21 @@ function BookingRow({ booking }: { booking: Booking }) {
       </p>
       {booking.status === 'pending_payment' && due && (
         <p className="text-slate-600">{t('booking.payAmount', { amount: formatMoney(due.rials, i18n.language) })}</p>
+      )}
+      {booking.status === 'pending_payment' && (
+        <button
+          type="button"
+          disabled={pay.isPending}
+          className={`${buttonClass} w-full`}
+          onClick={() => pay.mutate(booking.id)}
+        >
+          {t('booking.pay')}
+        </button>
+      )}
+      {pay.isError && (
+        <p role="alert" className="text-danger-600">
+          {errorMessage(pay.error, t('errors.generic'))}
+        </p>
       )}
       {booking.status === 'cancelled' && booking.refund_due.rials !== '0' && (
         <p className="text-slate-600">

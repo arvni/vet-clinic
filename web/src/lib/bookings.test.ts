@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { dayOptions, formatTime, servicesFor, type Service } from './bookings'
+import { dayOptions, formatTime, nextBooking, servicesFor, type Booking, type Service } from './bookings'
 
 describe('dayOptions', () => {
   it('rolls to the next clinic day before UTC midnight', () => {
@@ -28,5 +28,25 @@ describe('servicesFor', () => {
     const cats = service(['cat'])
     expect(servicesFor([all, cats], 'dog')).toEqual([all])
     expect(servicesFor([all, cats], 'cat')).toEqual([all, cats])
+  })
+})
+
+describe('nextBooking', () => {
+  const booking = (starts_at: string, status: Booking['status'] = 'confirmed') => ({ starts_at, status }) as Booking
+  const now = new Date('2026-11-08T08:00:00Z')
+
+  it('picks the soonest live future booking', () => {
+    const soon = booking('2026-11-09T08:00:00Z')
+    const list = [
+      booking('2026-11-01T08:00:00Z'),
+      booking('2026-11-08T09:00:00Z', 'cancelled'),
+      booking('2026-11-20T08:00:00Z'),
+      soon,
+    ]
+    expect(nextBooking(list, now)).toBe(soon)
+  })
+
+  it('returns null when nothing is coming up', () => {
+    expect(nextBooking([booking('2026-11-01T08:00:00Z')], now)).toBeNull()
   })
 })

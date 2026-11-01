@@ -5,8 +5,10 @@ import { AuthProvider, useAuth } from './auth/AuthContext'
 import { AddPet } from './pages/AddPet'
 import { BookVisit } from './pages/BookVisit'
 import { Bookings } from './pages/Bookings'
+import { ChoosePet } from './pages/ChoosePet'
 import { Dashboard } from './pages/Dashboard'
 import { Login } from './pages/Login'
+import { PaymentResult } from './pages/PaymentResult'
 import { PetProfile } from './pages/PetProfile'
 import { RescheduleBooking } from './pages/RescheduleBooking'
 
@@ -34,7 +36,9 @@ export default function App() {
             <Route path="/" element={protectedRoute(<Dashboard />)} />
             <Route path="/pets/new" element={protectedRoute(<AddPet />)} />
             <Route path="/pets/:id" element={protectedRoute(<PetProfile />)} />
+            <Route path="/book" element={protectedRoute(<ChoosePet />)} />
             <Route path="/pets/:id/book" element={protectedRoute(<BookVisit />)} />
+            <Route path="/payments/result" element={protectedRoute(<PaymentResult />)} />
             <Route path="/bookings" element={protectedRoute(<Bookings />)} />
             <Route path="/bookings/:id/reschedule" element={protectedRoute(<RescheduleBooking />)} />
             <Route path="*" element={<Navigate to="/" replace />} />

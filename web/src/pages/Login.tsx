@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { useNavigate } from 'react-router-dom'
 import { isAxiosError } from 'axios'
 import { useAuth } from '../auth/AuthContext'
+import { PawIcon } from '../components/Icons'
 import { LanguageSwitch } from '../components/LanguageSwitch'
 import { localizeDigits, normalizeIranMobile, toLatinDigits } from '../lib/digits'
 
@@ -75,12 +76,19 @@ export function Login() {
 
   return (
     <main className="flex min-h-screen items-center justify-center p-4">
-      <div className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-sm ring-1 ring-slate-200">
-        <div className="mb-6 flex items-center justify-between">
-          <h1 className="text-lg font-semibold text-brand-700">{t('app.name')}</h1>
+      <div className="w-full max-w-sm rounded-3xl bg-white p-6 shadow-sm ring-1 ring-slate-200">
+        <div className="mb-2 flex justify-end">
           <LanguageSwitch />
         </div>
-        <h2 className="mb-4 text-base font-medium">{t('auth.title')}</h2>
+        <div className="mb-6 text-center">
+          <span className="mx-auto mb-3 flex h-16 w-16 items-center justify-center rounded-2xl bg-brand-600 text-white">
+            <PawIcon width={36} height={36} />
+          </span>
+          <h1 className="text-xl font-bold text-brand-700">{t('app.name')}</h1>
+          <p className="mt-1 text-sm text-slate-600">{t('auth.tagline')}</p>
+        </div>
+        <h2 className="mb-1 font-semibold">{t('auth.title')}</h2>
+        {step === 'mobile' && <p className="mb-4 text-sm text-slate-600">{t('auth.noPassword')}</p>}
 
         {step === 'mobile' ? (
           <form onSubmit={sendCode} className="space-y-4">
@@ -94,14 +102,14 @@ export function Login() {
                 value={mobileInput}
                 onChange={(e) => setMobileInput(e.target.value)}
                 placeholder={t('auth.mobilePlaceholder')}
-                className="w-full rounded-lg border border-slate-300 px-3 py-2 text-start focus:border-brand-500 focus:outline-none"
+                className="min-h-12 w-full rounded-xl border border-slate-300 px-3 py-2 text-start text-base focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-100"
                 required
               />
             </label>
             <button
               type="submit"
               disabled={busy}
-              className="w-full rounded-lg bg-brand-600 py-2.5 font-medium text-white hover:bg-brand-700 disabled:opacity-60"
+              className="min-h-12 w-full rounded-xl bg-brand-600 py-2.5 font-semibold text-white hover:bg-brand-700 disabled:opacity-60"
             >
               {t('auth.sendCode')}
             </button>
@@ -119,14 +127,14 @@ export function Login() {
                 maxLength={5}
                 value={code}
                 onChange={(e) => setCode(e.target.value)}
-                className="w-full rounded-lg border border-slate-300 px-3 py-2 text-center text-lg tracking-[0.5em] focus:border-brand-500 focus:outline-none"
+                className="min-h-14 w-full rounded-xl border border-slate-300 px-3 py-2 text-center text-2xl tracking-[0.5em] focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-100"
                 required
               />
             </label>
             <button
               type="submit"
               disabled={busy}
-              className="w-full rounded-lg bg-brand-600 py-2.5 font-medium text-white hover:bg-brand-700 disabled:opacity-60"
+              className="min-h-12 w-full rounded-xl bg-brand-600 py-2.5 font-semibold text-white hover:bg-brand-700 disabled:opacity-60"
             >
               {t('auth.verify')}
             </button>

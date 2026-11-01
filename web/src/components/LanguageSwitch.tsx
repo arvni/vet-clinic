@@ -18,7 +18,7 @@ export function LanguageSwitch() {
     <button
       type="button"
       onClick={switchLanguage}
-      className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-100"
+      className="min-h-11 rounded-xl px-3 text-sm font-medium text-slate-600 hover:bg-slate-100"
     >
       {t('app.language')}
     </button>

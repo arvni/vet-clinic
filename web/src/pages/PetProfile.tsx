@@ -31,7 +31,7 @@ export function PetProfile() {
         {t('common.back')}
       </Link>
       <Summary pet={pet.data} />
-      <Link to={`/pets/${petId}/book`} className={`${buttonClass} block text-center`}>
+      <Link to={`/pets/${petId}/book`} className={`${buttonClass} w-full text-lg`}>
         {t('booking.book')}
       </Link>
       <Weights petId={petId} />

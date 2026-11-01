@@ -105,6 +105,14 @@ export function formatDateTime(instant: string, lang: string): string {
   }).format(new Date(instant))
 }
 
+/** The soonest upcoming booking that is still on. */
+export function nextBooking(bookings: Booking[], now = new Date()): Booking | null {
+  const upcoming = bookings
+    .filter((b) => b.status !== 'cancelled' && new Date(b.starts_at) > now)
+    .sort((a, b) => a.starts_at.localeCompare(b.starts_at))
+  return upcoming[0] ?? null
+}
+
 /** Services this species can book; an empty species list means all. */
 export function servicesFor(services: Service[], species: string): Service[] {
   return services.filter((s) => s.species.length === 0 || s.species.includes(species))
@@ -190,5 +198,18 @@ export function useRescheduleBooking() {
     mutationFn: async ({ id, hold_token }: { id: number; hold_token: string }) =>
       (await api.post<{ data: Booking }>(`/bookings/${id}/reschedule`, { hold_token })).data.data,
     onSuccess: () => client.invalidateQueries({ queryKey: ['bookings'] }),
+  })
+}
+
+/** Starts payment; a null URL means nothing was owed and the booking is confirmed. */
+export function usePayBooking() {
+  const client = useQueryClient()
+  return useMutation({
+    mutationFn: async (id: number) =>
+      (await api.post<{ data: { redirect_url: string | null } }>(`/bookings/${id}/pay`)).data.data,
+    onSuccess: ({ redirect_url }) => {
+      if (redirect_url) window.location.assign(redirect_url)
+      else client.invalidateQueries({ queryKey: ['bookings'] })
+    },
   })
 }
