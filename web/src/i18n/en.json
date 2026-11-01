@@ -85,5 +85,41 @@
     "view": "View",
     "changePhoto": "Change photo",
     "microchip": "Microchip"
+  },
+  "booking": {
+    "titleFor": "Book for {{name}}",
+    "service": "Service",
+    "where": "Where",
+    "location": {
+      "clinic": "Clinic",
+      "home": "Home",
+      "online": "Online"
+    },
+    "address": "Address",
+    "addAddress": "New address",
+    "addressLabel": "Label (e.g. Home)",
+    "addressLine": "Full address",
+    "useLocation": "Use my current location",
+    "located": "Location saved",
+    "locationFailed": "We couldn't find your location. Check your browser's location permission.",
+    "saveAddress": "Save address",
+    "outsideZones": "Home visits aren't available at this address. You can choose the clinic or online instead.",
+    "day": "Day",
+    "time": "Time",
+    "noSlots": "No free times on this day.",
+    "heldUntil": "This time is held for you until {{time}}.",
+    "notes": "Notes",
+    "homeFee": "Home-visit fee",
+    "priceOnRequest": "Price at visit",
+    "confirm": "Confirm booking",
+    "book": "Book a visit",
+    "mine": "My bookings",
+    "none": "You have no bookings yet.",
+    "payAmount": "Payment due: {{amount}}",
+    "status": {
+      "pending_payment": "Awaiting payment",
+      "confirmed": "Confirmed",
+      "cancelled": "Cancelled"
+    }
   }
 }

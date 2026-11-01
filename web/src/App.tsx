@@ -3,6 +3,8 @@ import type { ReactNode } from 'react'
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 import { AuthProvider, useAuth } from './auth/AuthContext'
 import { AddPet } from './pages/AddPet'
+import { BookVisit } from './pages/BookVisit'
+import { Bookings } from './pages/Bookings'
 import { Dashboard } from './pages/Dashboard'
 import { Login } from './pages/Login'
 import { PetProfile } from './pages/PetProfile'
@@ -31,6 +33,8 @@ export default function App() {
             <Route path="/" element={protectedRoute(<Dashboard />)} />
             <Route path="/pets/new" element={protectedRoute(<AddPet />)} />
             <Route path="/pets/:id" element={protectedRoute(<PetProfile />)} />
+            <Route path="/pets/:id/book" element={protectedRoute(<BookVisit />)} />
+            <Route path="/bookings" element={protectedRoute(<Bookings />)} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </BrowserRouter>

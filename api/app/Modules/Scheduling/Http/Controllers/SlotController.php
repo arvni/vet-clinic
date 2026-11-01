@@ -52,11 +52,13 @@ class SlotController
         $service = Service::query()->active()->findOrFail($data['service_id']);
         $start = Carbon::parse($data['starts_at'])->utc();
 
+        $holds->releaseCurrent($user->id);
+
         if (! $search->isOffered($service, (int) $data['vet_id'], $start)) {
             return response()->json(['message' => __('scheduling.slot_unavailable')], 409);
         }
 
-        $hold = $holds->acquire($user->id, (int) $data['vet_id'], $start, $start->copy()->addMinutes($service->duration_minutes));
+        $hold = $holds->acquire($user->id, $service->id, (int) $data['vet_id'], $start, $start->copy()->addMinutes($service->duration_minutes));
         if ($hold === null) {
             return response()->json(['message' => __('scheduling.slot_unavailable')], 409);
         }

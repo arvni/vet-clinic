@@ -21,12 +21,9 @@ final class SlotHolds
     /**
      * @return array{token: string, expires_at: Carbon}|null null when any part of the time is taken
      */
-    public function acquire(int $ownerId, int $vetId, Carbon $start, Carbon $end): ?array
+    public function acquire(int $ownerId, int $serviceId, int $vetId, Carbon $start, Carbon $end): ?array
     {
-        $previous = Cache::get($this->ownerKey($ownerId));
-        if (is_string($previous)) {
-            $this->release($ownerId, $previous);
-        }
+        $this->releaseCurrent($ownerId);
 
         $token = (string) Str::uuid();
         $expiresAt = now()->addMinutes((int) config('scheduling.hold_minutes'));
@@ -41,17 +38,45 @@ final class SlotHolds
             $claimed[] = $cell;
         }
 
-        Cache::put($this->holdKey($token), ['owner_id' => $ownerId, 'cells' => $claimed], $expiresAt);
+        Cache::put($this->holdKey($token), [
+            'owner_id' => $ownerId,
+            'service_id' => $serviceId,
+            'vet_id' => $vetId,
+            'starts_at' => $start->toIso8601String(),
+            'ends_at' => $end->toIso8601String(),
+            'cells' => $claimed,
+        ], $expiresAt);
         Cache::put($this->ownerKey($ownerId), $token, $expiresAt);
 
         return ['token' => $token, 'expires_at' => $expiresAt];
     }
 
+    /**
+     * The owner's live hold, or null when it expired or is someone else's.
+     *
+     * @return array{owner_id: int, service_id: int, vet_id: int, starts_at: string, ends_at: string, cells: list<string>}|null
+     */
+    public function find(int $ownerId, string $token): ?array
+    {
+        $hold = Cache::get($this->holdKey($token));
+
+        return is_array($hold) && $hold['owner_id'] === $ownerId ? $hold : null;
+    }
+
+    /** Frees the owner's hold, so moving it to an overlapping time works. */
+    public function releaseCurrent(int $ownerId): void
+    {
+        $token = Cache::get($this->ownerKey($ownerId));
+        if (is_string($token)) {
+            $this->release($ownerId, $token);
+        }
+    }
+
     /** Frees a hold; false when it has expired or belongs to another owner. */
     public function release(int $ownerId, string $token): bool
     {
-        $hold = Cache::get($this->holdKey($token));
-        if (! is_array($hold) || $hold['owner_id'] !== $ownerId) {
+        $hold = $this->find($ownerId, $token);
+        if ($hold === null) {
             return false;
         }
 

@@ -23,6 +23,9 @@ export function Dashboard() {
         {t('dashboard.emergency')}
       </button>
 
+      <Link to="/bookings" className="block rounded-2xl bg-white p-4 text-sm font-medium ring-1 ring-slate-200">
+        {t('booking.mine')}
+      </Link>
       <Card
         title={t('dashboard.pets')}
         action={

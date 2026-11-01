@@ -1,5 +1,6 @@
 <?php
 
+use App\Modules\Bookings\Http\Controllers\BookingController;
 use App\Modules\Catalog\Http\Controllers\AdminCatalogController;
 use App\Modules\Catalog\Http\Controllers\CatalogController;
 use App\Modules\Files\FileController;
@@ -75,6 +76,13 @@ Route::prefix('v1')->group(function () {
             Route::get('slots', [SlotController::class, 'index']);
             Route::post('slot-holds', [SlotController::class, 'hold']);
             Route::delete('slot-holds/{token}', [SlotController::class, 'release'])->whereUuid('token');
+        });
+
+        // Bookings (T030)
+        Route::middleware(['abilities:owner', 'throttle:60,1'])->group(function () {
+            Route::get('bookings', [BookingController::class, 'index']);
+            Route::post('bookings', [BookingController::class, 'store']);
+            Route::get('bookings/{booking}', [BookingController::class, 'show']);
         });
 
         // Address book, zone lookup and map proxy (FR-3.2)

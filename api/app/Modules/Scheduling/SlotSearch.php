@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\Scheduling;
 
 use App\Models\User;
+use App\Modules\Bookings\Models\Booking;
 use App\Modules\Catalog\Models\Service;
 use App\Modules\Identity\Role;
 use App\Modules\Scheduling\Models\Holiday;
@@ -84,6 +85,7 @@ final class SlotSearch
         $blocks = ScheduleBlock::query()->where('user_id', $vetId)->where('weekday', $weekday)->orderBy('starts_at')->get();
         $breaks = $blocks->where('kind', ScheduleBlock::BREAK);
         $step = (int) config('scheduling.step_minutes');
+        $booked = $this->bookings($vetId, $date);
 
         $starts = [];
         foreach ($blocks->where('kind', ScheduleBlock::WORK) as $work) {
@@ -92,13 +94,31 @@ final class SlotSearch
             for ($start = $this->at($date, $work->starts_at); $start->copy()->addMinutes($duration)->lte($workEnd); $start = $start->copy()->addMinutes($step)) {
                 $end = $start->copy()->addMinutes($duration);
 
-                if ($start->isFuture() && ! $this->overlapsBreak($breaks, $date, $start, $end) && ! $this->holds->isHeld($vetId, $start, $end)) {
+                $free = $start->isFuture()
+                    && ! $this->overlapsBreak($breaks, $date, $start, $end)
+                    && ! $booked->contains(fn (Booking $b) => $start->lt($b->ends_at) && $end->gt($b->starts_at))
+                    && ! $this->holds->isHeld($vetId, $start, $end);
+
+                if ($free) {
                     $starts[] = $start->copy()->utc();
                 }
             }
         }
 
         return $starts;
+    }
+
+    /** @return Collection<int, Booking> */
+    private function bookings(int $vetId, string $date): Collection
+    {
+        $dayStart = Carbon::parse($date, JalaliDate::TIMEZONE);
+
+        return Booking::query()
+            ->where('vet_id', $vetId)
+            ->where('status', '<>', Booking::CANCELLED)
+            ->where('starts_at', '<', $dayStart->copy()->addDay()->utc())
+            ->where('ends_at', '>', $dayStart->copy()->utc())
+            ->get();
     }
 
     /** @param  Collection<int, ScheduleBlock>  $breaks */
