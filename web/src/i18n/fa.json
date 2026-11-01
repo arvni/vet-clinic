@@ -1,0 +1,30 @@
+{
+  "app": {
+    "name": "کلینیک دامپزشکی",
+    "language": "English"
+  },
+  "auth": {
+    "title": "ورود یا ثبت‌نام",
+    "mobile": "شماره موبایل",
+    "mobilePlaceholder": "۰۹۱۲۳۴۵۶۷۸۹",
+    "sendCode": "ارسال کد",
+    "code": "کد تأیید",
+    "codeSentTo": "کد ۵ رقمی به {{mobile}} پیامک شد",
+    "verify": "تأیید و ورود",
+    "resendIn": "ارسال مجدد تا {{seconds}} ثانیه دیگر",
+    "resend": "ارسال مجدد کد",
+    "changeMobile": "تغییر شماره",
+    "invalidMobile": "شماره موبایل معتبر نیست",
+    "logout": "خروج"
+  },
+  "dashboard": {
+    "welcome": "خوش آمدید",
+    "pets": "حیوانات من",
+    "noPets": "هنوز حیوانی ثبت نکرده‌اید",
+    "emergency": "اورژانس"
+  },
+  "errors": {
+    "generic": "خطایی رخ داد. دوباره تلاش کنید.",
+    "tooManyRequests": "تعداد درخواست‌ها زیاد است. کمی بعد تلاش کنید."
+  }
+}

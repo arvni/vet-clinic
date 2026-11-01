@@ -1,0 +1,15 @@
+@import 'vazirmatn/Vazirmatn-Variable-font-face.css';
+@import 'tailwindcss';
+
+@theme {
+  --font-sans: 'Vazirmatn', ui-sans-serif, system-ui, sans-serif;
+  --color-brand-50: #eef7f5;
+  --color-brand-100: #d5ece6;
+  --color-brand-500: #2a8a78;
+  --color-brand-600: #217062;
+  --color-brand-700: #1a594e;
+  --color-danger-600: #c43d3d;
+}
+
+html { font-family: var(--font-sans); }
+body { @apply bg-slate-50 text-slate-900 antialiased; }

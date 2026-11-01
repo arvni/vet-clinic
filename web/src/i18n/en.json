@@ -1,0 +1,30 @@
+{
+  "app": {
+    "name": "Vet Clinic",
+    "language": "فارسی"
+  },
+  "auth": {
+    "title": "Sign in or sign up",
+    "mobile": "Mobile number",
+    "mobilePlaceholder": "09123456789",
+    "sendCode": "Send code",
+    "code": "Verification code",
+    "codeSentTo": "A 5-digit code was sent to {{mobile}}",
+    "verify": "Verify and sign in",
+    "resendIn": "Resend in {{seconds}}s",
+    "resend": "Resend code",
+    "changeMobile": "Change number",
+    "invalidMobile": "Mobile number is not valid",
+    "logout": "Sign out"
+  },
+  "dashboard": {
+    "welcome": "Welcome",
+    "pets": "My pets",
+    "noPets": "You haven't added a pet yet",
+    "emergency": "Emergency"
+  },
+  "errors": {
+    "generic": "Something went wrong. Please try again.",
+    "tooManyRequests": "Too many requests. Please wait a moment."
+  }
+}
