@@ -44,14 +44,6 @@ final class BookingPolicy
             && now()->lte($booking->starts_at->copy()->subHours($this->windows()['reschedule_hours']));
     }
 
-    /** The home-visit fee comes back only if it was paid and nobody has left yet. */
-    public function refundDue(Booking $booking): int
-    {
-        return $booking->status === Booking::CONFIRMED && $booking->dispatched_at === null
-            ? $booking->home_visit_fee_rials
-            : 0;
-    }
-
     private function isOpen(Booking $booking): bool
     {
         return $booking->status !== Booking::CANCELLED;

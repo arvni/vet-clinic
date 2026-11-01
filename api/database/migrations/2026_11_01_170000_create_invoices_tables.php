@@ -14,6 +14,30 @@ return new class extends Migration
             $table->unsignedBigInteger('last');
         });
 
+        // FR-5.3: a rate change is a new row, so old invoices never move.
+        Schema::create('tax_rates', function (Blueprint $table) {
+            $table->id();
+            $table->string('category', 32);
+            $table->unsignedSmallInteger('basis_points');
+            $table->date('effective_from');
+            $table->timestamps();
+
+            $table->unique(['category', 'effective_from']);
+        });
+
+        Schema::create('discount_codes', function (Blueprint $table) {
+            $table->id();
+            $table->string('code', 32)->unique();
+            $table->unsignedSmallInteger('basis_points')->nullable();
+            $table->unsignedBigInteger('fixed_rials')->nullable();
+            $table->unsignedInteger('max_uses')->nullable();
+            $table->unsignedInteger('used_count')->default(0);
+            $table->timestamp('starts_at')->nullable();
+            $table->timestamp('ends_at')->nullable();
+            $table->boolean('active')->default(true);
+            $table->timestamps();
+        });
+
         Schema::create('invoices', function (Blueprint $table) {
             $table->id();
             $table->string('kind', 12)->default('invoice');
@@ -23,6 +47,12 @@ return new class extends Migration
             $table->foreignId('booking_id')->nullable()->constrained();
             $table->string('status', 16)->index();
             $table->unsignedBigInteger('subtotal_rials')->default(0);
+            $table->foreignId('discount_code_id')->nullable()->constrained();
+            $table->unsignedSmallInteger('discount_basis_points')->nullable();
+            $table->unsignedBigInteger('discount_fixed_rials')->nullable();
+            $table->string('discount_reason', 255)->nullable();
+            $table->foreignId('discounted_by')->nullable()->constrained('users');
+            $table->unsignedBigInteger('discount_rials')->default(0);
             $table->unsignedBigInteger('vat_rials')->default(0);
             $table->unsignedBigInteger('total_rials')->default(0);
             $table->unsignedBigInteger('paid_rials')->default(0);
@@ -45,6 +75,7 @@ return new class extends Migration
             $table->unsignedInteger('quantity');
             $table->unsignedBigInteger('unit_price_rials');
             $table->unsignedSmallInteger('vat_basis_points')->default(0);
+            $table->unsignedBigInteger('discount_rials')->default(0);
             // On a credit note: the original line reversed. Unique, so a line is credited once.
             $table->foreignId('credits_line_id')->nullable()->unique()->constrained('invoice_lines');
             $table->timestamps();
@@ -64,6 +95,7 @@ return new class extends Migration
                     NEW.number IS DISTINCT FROM OLD.number OR NEW.kind IS DISTINCT FROM OLD.kind
                     OR NEW.owner_id IS DISTINCT FROM OLD.owner_id OR NEW.booking_id IS DISTINCT FROM OLD.booking_id
                     OR NEW.subtotal_rials IS DISTINCT FROM OLD.subtotal_rials
+                    OR NEW.discount_rials IS DISTINCT FROM OLD.discount_rials
                     OR NEW.vat_rials IS DISTINCT FROM OLD.vat_rials
                     OR NEW.total_rials IS DISTINCT FROM OLD.total_rials
                     OR NEW.issued_at IS DISTINCT FROM OLD.issued_at
@@ -104,6 +136,8 @@ return new class extends Migration
     {
         Schema::dropIfExists('invoice_lines');
         Schema::dropIfExists('invoices');
+        Schema::dropIfExists('discount_codes');
+        Schema::dropIfExists('tax_rates');
         Schema::dropIfExists('invoice_counters');
         DB::unprepared('DROP FUNCTION IF EXISTS invoices_freeze_issued(); DROP FUNCTION IF EXISTS invoice_lines_freeze_issued();');
     }

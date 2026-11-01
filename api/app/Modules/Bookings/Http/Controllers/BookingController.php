@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\Bookings\Http\Controllers;
 
 use App\Models\User;
+use App\Modules\Bookings\BookingCancellation;
 use App\Modules\Bookings\BookingPolicy;
 use App\Modules\Bookings\Models\Booking;
 use App\Modules\Catalog\Models\Service;
@@ -127,7 +128,7 @@ class BookingController
     }
 
     /** FR-3.5: inside the window the clinic must be called instead. */
-    public function cancel(Request $request, Booking $booking): JsonResponse
+    public function cancel(Request $request, BookingCancellation $cancellation, Booking $booking): JsonResponse
     {
         $this->assertOwned($request, $booking);
         $data = $request->validate(['reason' => ['sometimes', 'nullable', 'string', 'max:500']]);
@@ -136,12 +137,7 @@ class BookingController
             return response()->json(['message' => __('bookings.cancel_closed')], 409);
         }
 
-        $booking->update([
-            'refund_due_rials' => $this->policy->refundDue($booking),
-            'status' => Booking::CANCELLED,
-            'cancelled_at' => now(),
-            'cancel_reason' => $data['reason'] ?? null,
-        ]);
+        $cancellation->cancel($booking, $data['reason'] ?? null);
 
         return response()->json(['data' => $this->data($booking)]);
     }

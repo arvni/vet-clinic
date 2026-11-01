@@ -10,6 +10,8 @@ use App\Modules\Catalog\Models\Service;
 use App\Modules\Invoices\InvoiceService;
 use App\Modules\Invoices\Models\Invoice;
 use App\Modules\Invoices\Models\InvoiceLine;
+use App\Modules\Invoices\PrescriptionFee;
+use App\Modules\Invoices\TaxRates;
 use App\Support\Digits;
 use App\Support\Money;
 use App\Support\PersianText;
@@ -20,7 +22,10 @@ use Illuminate\Support\Facades\Gate;
 /** Owners read their invoices; dispatchers and admins build and issue them. */
 class InvoiceController
 {
-    public function __construct(private readonly InvoiceService $invoices) {}
+    public function __construct(
+        private readonly InvoiceService $invoices,
+        private readonly TaxRates $tax,
+    ) {}
 
     public function index(Request $request): JsonResponse
     {
@@ -72,6 +77,61 @@ class InvoiceController
         return response()->json(['data' => $this->data($this->invoices->removeLine($invoice, $line))]);
     }
 
+    public function prescriptionFee(Booking $booking, PrescriptionFee $fee): JsonResponse
+    {
+        Gate::authorize('prescribe');
+
+        return response()->json(['data' => $this->data($fee->charge($booking))], 201);
+    }
+
+    public function applyCode(Request $request, Invoice $invoice): JsonResponse
+    {
+        abort_unless($invoice->owner_id === $this->user($request)->id, 404);
+        $data = $request->validate(['code' => ['required', 'string', 'max:32']]);
+
+        return response()->json(['data' => $this->data($this->invoices->applyCode($invoice, $data['code']))]);
+    }
+
+    public function removeCode(Request $request, Invoice $invoice): JsonResponse
+    {
+        abort_unless($invoice->owner_id === $this->user($request)->id, 404);
+
+        if ($invoice->discount_code_id === null) {
+            return response()->json(['data' => $this->data($invoice)]);
+        }
+
+        return response()->json(['data' => $this->data($this->invoices->removeDiscount($invoice))]);
+    }
+
+    public function staffDiscount(Request $request, Invoice $invoice): JsonResponse
+    {
+        Gate::authorize('manage-invoices');
+
+        if ($request->filled('toman')) {
+            $request->merge(['toman' => Digits::toLatin(str_replace([',', '٬', ' '], '', (string) $request->input('toman')))]);
+        }
+        $data = $request->validate([
+            'percent' => ['required_without:toman', 'prohibits:toman', 'nullable', 'numeric', 'gt:0', 'max:100'],
+            'toman' => ['required_without:percent', 'nullable', 'integer', 'min:1'],
+            'reason' => ['required', 'string', 'max:255'],
+        ]);
+
+        return response()->json(['data' => $this->data($this->invoices->applyStaffDiscount(
+            $invoice,
+            isset($data['percent']) ? (int) round((float) $data['percent'] * 100) : null,
+            isset($data['toman']) ? (int) $data['toman'] * 10 : null,
+            $data['reason'],
+            $this->user($request)->id,
+        ))]);
+    }
+
+    public function removeStaffDiscount(Invoice $invoice): JsonResponse
+    {
+        Gate::authorize('manage-invoices');
+
+        return response()->json(['data' => $this->data($this->invoices->removeDiscount($invoice))]);
+    }
+
     public function issue(Invoice $invoice): JsonResponse
     {
         Gate::authorize('manage-invoices');
@@ -110,6 +170,7 @@ class InvoiceController
                 'description_en' => $service->name_en,
                 'quantity' => $quantity,
                 'unit_price_rials' => $price,
+                'vat_basis_points' => $this->tax->basisPoints($service->tax_category),
             ];
         }
 
@@ -119,6 +180,7 @@ class InvoiceController
             'description_en' => $data['description_en'] ?? null,
             'quantity' => $quantity,
             'unit_price_rials' => (int) $data['unit_price_toman'] * 10,
+            'vat_basis_points' => $this->tax->basisPoints(null),
         ];
     }
 
@@ -140,8 +202,10 @@ class InvoiceController
             'status' => $invoice->status,
             'booking_id' => $invoice->booking_id,
             'credit_of_id' => $invoice->credit_of_id,
+            'supplement_of_id' => $invoice->supplement_of_id,
             'issued_at' => $invoice->issued_at?->toIso8601ZuluString(),
             'subtotal' => Money::rials($invoice->subtotal_rials),
+            'discount' => Money::rials($invoice->discount_rials),
             'vat' => Money::rials($invoice->vat_rials),
             'total' => Money::rials($invoice->total_rials),
             'paid' => Money::rials($invoice->paid_rials),
@@ -153,6 +217,9 @@ class InvoiceController
                 'quantity' => $l->quantity,
                 'unit_price' => Money::rials($l->unit_price_rials),
                 'amount' => Money::rials($l->amountRials()),
+                'discount' => Money::rials($l->discount_rials),
+                'vat_percent' => $l->vat_basis_points / 100,
+                'vat' => Money::rials($l->vatRials()),
             ]),
         ];
     }

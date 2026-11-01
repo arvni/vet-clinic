@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\Invoices;
 
 use App\Modules\Bookings\Models\Booking;
+use App\Modules\Invoices\Models\DiscountCode;
 use App\Modules\Invoices\Models\Invoice;
 use App\Modules\Invoices\Models\InvoiceLine;
 use App\Support\JalaliDate;
@@ -14,6 +15,8 @@ use Illuminate\Support\Facades\DB;
 /** Invoice life cycle (FR-5.4): draft → issued → paid / partially paid → cancelled. */
 final class InvoiceService
 {
+    public function __construct(private readonly TaxRates $tax) {}
+
     /** The booking's invoice, created on first use with its price snapshots. */
     public function forBooking(Booking $booking): Invoice
     {
@@ -37,6 +40,7 @@ final class InvoiceService
                     'description_en' => $booking->service->name_en,
                     'quantity' => 1,
                     'unit_price_rials' => $booking->service_price_rials,
+                    'vat_basis_points' => $this->tax->basisPoints($booking->service->tax_category),
                 ]);
             }
             if ($booking->home_visit_fee_rials > 0) {
@@ -46,6 +50,7 @@ final class InvoiceService
                     'description_en' => 'Home-visit fee',
                     'quantity' => 1,
                     'unit_price_rials' => $booking->home_visit_fee_rials,
+                    'vat_basis_points' => $this->tax->basisPoints(null),
                 ]);
             }
 
@@ -76,6 +81,77 @@ final class InvoiceService
         });
     }
 
+    public function applyCode(Invoice $invoice, string $code): Invoice
+    {
+        $this->assertDraft($invoice);
+
+        $discount = DiscountCode::query()->where('code', mb_strtoupper(trim($code)))->first();
+        if ($discount === null || ! $discount->isUsable()) {
+            throw InvoiceException::badCode();
+        }
+
+        return DB::transaction(fn () => $this->setDiscount($invoice, [
+            'discount_code_id' => $discount->id,
+            'discount_basis_points' => $discount->basis_points,
+            'discount_fixed_rials' => $discount->fixed_rials,
+            'discount_reason' => null,
+            'discounted_by' => null,
+        ]));
+    }
+
+    /** FR-5.5: a staff discount always names who gave it and why. */
+    public function applyStaffDiscount(Invoice $invoice, ?int $basisPoints, ?int $fixedRials, string $reason, int $staffId): Invoice
+    {
+        $this->assertDraft($invoice);
+
+        return DB::transaction(fn () => $this->setDiscount($invoice, [
+            'discount_code_id' => null,
+            'discount_basis_points' => $basisPoints,
+            'discount_fixed_rials' => $fixedRials,
+            'discount_reason' => $reason,
+            'discounted_by' => $staffId,
+        ]));
+    }
+
+    public function removeDiscount(Invoice $invoice): Invoice
+    {
+        $this->assertDraft($invoice);
+
+        return DB::transaction(fn () => $this->setDiscount($invoice, [
+            'discount_code_id' => null,
+            'discount_basis_points' => null,
+            'discount_fixed_rials' => null,
+            'discount_reason' => null,
+            'discounted_by' => null,
+        ]));
+    }
+
+    /** @param  array<string, mixed>  $attributes */
+    private function setDiscount(Invoice $invoice, array $attributes): Invoice
+    {
+        $invoice->update($attributes);
+
+        return $this->recalculate($invoice);
+    }
+
+    /** Spends a use of the code; the conditional update closes the last-use race. */
+    private function consumeCode(Invoice $invoice): void
+    {
+        if ($invoice->discount_code_id === null) {
+            return;
+        }
+
+        $taken = DiscountCode::query()
+            ->whereKey($invoice->discount_code_id)
+            ->where('active', true)
+            ->where(fn ($q) => $q->whereNull('max_uses')->orWhereColumn('used_count', '<', 'max_uses'))
+            ->increment('used_count');
+
+        if ($taken === 0) {
+            throw InvoiceException::badCode();
+        }
+    }
+
     public function issue(Invoice $invoice): Invoice
     {
         $this->assertDraft($invoice);
@@ -84,6 +160,7 @@ final class InvoiceService
         }
 
         return DB::transaction(function () use ($invoice): Invoice {
+            $this->consumeCode($invoice);
             $this->recalculate($invoice);
             $invoice->update([
                 'number' => $this->nextNumber($invoice->kind === Invoice::KIND_CREDIT_NOTE ? 'CN' : 'INV'),
@@ -93,6 +170,16 @@ final class InvoiceService
 
             return $invoice;
         });
+    }
+
+    /** A fully discounted invoice has nothing left to collect. */
+    public function closeIfNothingDue(Invoice $invoice): void
+    {
+        $due = $invoice->total_rials - $invoice->credited_rials - $invoice->paid_rials;
+
+        if ($due === 0 && in_array($invoice->status, [Invoice::ISSUED, Invoice::PARTIALLY_PAID], true)) {
+            $invoice->update(['status' => Invoice::PAID]);
+        }
     }
 
     /** Applies money received; payment gateways call this after verification. */
@@ -146,7 +233,7 @@ final class InvoiceService
                 $note->lines()->create([
                     ...$line->only([
                         'kind', 'service_id', 'description_fa', 'description_en',
-                        'quantity', 'unit_price_rials', 'vat_basis_points',
+                        'quantity', 'unit_price_rials', 'vat_basis_points', 'discount_rials',
                     ]),
                     'credits_line_id' => $line->id,
                 ]);
@@ -167,18 +254,44 @@ final class InvoiceService
         });
     }
 
+    /** Rebuilds every total from the lines (FR-5.1). */
     private function recalculate(Invoice $invoice): Invoice
     {
-        $subtotal = 0;
-        $vat = 0;
-        foreach ($invoice->lines()->get() as $line) {
-            $subtotal += $line->amountRials();
-            $vat += Money::rials($line->amountRials())->percent($line->vat_basis_points)->rials;
+        $lines = $invoice->lines()->get();
+        $subtotal = $lines->sum(fn (InvoiceLine $l) => $l->amountRials());
+
+        // A credit note keeps the discounts its lines were copied with.
+        if ($invoice->kind === Invoice::KIND_INVOICE) {
+            $discount = min($subtotal, $this->discountFor($invoice, $subtotal));
+            $left = $discount;
+
+            foreach ($lines->values() as $i => $line) {
+                $share = $i === $lines->count() - 1 ? $left : intdiv($discount * $line->amountRials(), max($subtotal, 1));
+                $left -= $share;
+                $line->update(['discount_rials' => $share]);
+            }
         }
 
-        $invoice->update(['subtotal_rials' => $subtotal, 'vat_rials' => $vat, 'total_rials' => $subtotal + $vat]);
+        $discount = $lines->sum(fn (InvoiceLine $l) => $l->discount_rials);
+        $vat = $lines->sum(fn (InvoiceLine $l) => $l->vatRials());
+
+        $invoice->update([
+            'subtotal_rials' => $subtotal,
+            'discount_rials' => $discount,
+            'vat_rials' => $vat,
+            'total_rials' => $subtotal - $discount + $vat,
+        ]);
 
         return $invoice;
+    }
+
+    private function discountFor(Invoice $invoice, int $subtotal): int
+    {
+        if ($invoice->discount_basis_points !== null) {
+            return Money::rials($subtotal)->percent($invoice->discount_basis_points)->rials;
+        }
+
+        return $invoice->discount_fixed_rials ?? 0;
     }
 
     /** Runs inside the issuing transaction: the row lock keeps the sequence gapless. */

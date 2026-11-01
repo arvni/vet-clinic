@@ -14,10 +14,17 @@ use Illuminate\Support\Carbon;
  * @property string $kind
  * @property string|null $number
  * @property int|null $credit_of_id
+ * @property int|null $supplement_of_id
  * @property int $owner_id
  * @property int|null $booking_id
  * @property string $status
  * @property int $subtotal_rials
+ * @property int|null $discount_code_id
+ * @property int|null $discount_basis_points
+ * @property int|null $discount_fixed_rials
+ * @property string|null $discount_reason
+ * @property int|null $discounted_by
+ * @property int $discount_rials
  * @property int $vat_rials
  * @property int $total_rials
  * @property int $paid_rials
@@ -46,6 +53,7 @@ class Invoice extends Model
         'kind' => self::KIND_INVOICE,
         'status' => self::DRAFT,
         'subtotal_rials' => 0,
+        'discount_rials' => 0,
         'vat_rials' => 0,
         'total_rials' => 0,
         'paid_rials' => 0,
@@ -53,14 +61,18 @@ class Invoice extends Model
     ];
 
     protected $fillable = [
-        'kind', 'number', 'credit_of_id', 'owner_id', 'booking_id', 'status', 'subtotal_rials',
-        'vat_rials', 'total_rials', 'paid_rials', 'credited_rials', 'issued_at',
+        'kind', 'number', 'credit_of_id', 'supplement_of_id', 'owner_id', 'booking_id', 'status', 'subtotal_rials',
+        'discount_code_id', 'discount_basis_points', 'discount_fixed_rials', 'discount_reason',
+        'discounted_by', 'discount_rials', 'vat_rials', 'total_rials', 'paid_rials', 'credited_rials', 'issued_at',
     ];
 
     protected function casts(): array
     {
         return [
             'subtotal_rials' => 'integer',
+            'discount_rials' => 'integer',
+            'discount_basis_points' => 'integer',
+            'discount_fixed_rials' => 'integer',
             'vat_rials' => 'integer',
             'total_rials' => 'integer',
             'paid_rials' => 'integer',

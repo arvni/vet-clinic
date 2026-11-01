@@ -41,6 +41,14 @@ services:
     volumes: [storage:/var/www/api/storage]
     depends_on: [api]
 
+  scheduler:
+    image: vet-clinic-api
+    restart: unless-stopped
+    command: php artisan schedule:work
+    env_file: .env
+    volumes: [storage:/var/www/api/storage]
+    depends_on: [api]
+
   nginx:
     build: { context: ., dockerfile: docker/nginx/Dockerfile }
     image: vet-clinic-nginx

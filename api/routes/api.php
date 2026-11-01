@@ -10,9 +10,12 @@ use App\Modules\Identity\Http\Controllers\MeController;
 use App\Modules\Identity\Http\Controllers\OtpAuthController;
 use App\Modules\Identity\Http\Controllers\StaffAuthController;
 use App\Modules\Identity\Http\Controllers\StaffController;
+use App\Modules\Invoices\Http\Controllers\AdminBillingController;
 use App\Modules\Invoices\Http\Controllers\InvoiceController;
 use App\Modules\Locations\Http\Controllers\AddressController;
 use App\Modules\Locations\Http\Controllers\ZoneController;
+use App\Modules\Payments\Http\AdminRefundController;
+use App\Modules\Payments\Http\PaymentController;
 use App\Modules\Pets\Http\Controllers\PetAllergyController;
 use App\Modules\Pets\Http\Controllers\PetController;
 use App\Modules\Pets\Http\Controllers\PetDocumentController;
@@ -43,6 +46,9 @@ Route::prefix('v1')->group(function () {
         Route::get('pet-photos/{pet}', [FileController::class, 'petPhoto'])->name('files.pet-photo');
         Route::get('pet-documents/{document}', [FileController::class, 'petDocument'])->name('files.pet-document');
     });
+
+    // Public: the gateway sends the browser here, and settlement verifies server-side.
+    Route::get('payments/callback', [PaymentController::class, 'callback'])->middleware('throttle:60,1');
 
     Route::middleware(['auth:sanctum', 'active'])->group(function () {
         Route::post('auth/logout', [MeController::class, 'logout']);
@@ -89,6 +95,9 @@ Route::prefix('v1')->group(function () {
         Route::middleware('abilities:owner')->group(function () {
             Route::get('invoices', [InvoiceController::class, 'index']);
             Route::get('invoices/{invoice}', [InvoiceController::class, 'show']);
+            Route::post('invoices/{invoice}/pay', [PaymentController::class, 'payInvoice']);
+            Route::post('invoices/{invoice}/discount-code', [InvoiceController::class, 'applyCode'])->middleware('throttle:10,1');
+            Route::delete('invoices/{invoice}/discount-code', [InvoiceController::class, 'removeCode']);
         });
 
         // Bookings (T030)
@@ -96,6 +105,7 @@ Route::prefix('v1')->group(function () {
             Route::get('bookings', [BookingController::class, 'index']);
             Route::post('bookings', [BookingController::class, 'store']);
             Route::get('bookings/{booking}', [BookingController::class, 'show']);
+            Route::post('bookings/{booking}/pay', [PaymentController::class, 'pay']);
             Route::post('bookings/{booking}/cancel', [BookingController::class, 'cancel']);
             Route::post('bookings/{booking}/reschedule', [BookingController::class, 'reschedule']);
         });
@@ -115,8 +125,11 @@ Route::prefix('v1')->group(function () {
             Route::post('pet-documents/{document}/verify', [PetDocumentController::class, 'verify']);
 
             Route::post('bookings/{booking}/invoice', [InvoiceController::class, 'forBooking']);
+            Route::post('bookings/{booking}/prescription-fee', [InvoiceController::class, 'prescriptionFee']);
             Route::post('invoices/{invoice}/lines', [InvoiceController::class, 'addLine']);
             Route::delete('invoices/{invoice}/lines/{line}', [InvoiceController::class, 'removeLine']);
+            Route::post('invoices/{invoice}/discount', [InvoiceController::class, 'staffDiscount']);
+            Route::delete('invoices/{invoice}/discount', [InvoiceController::class, 'removeStaffDiscount']);
             Route::post('invoices/{invoice}/issue', [InvoiceController::class, 'issue']);
             Route::post('invoices/{invoice}/credit-notes', [InvoiceController::class, 'creditNote']);
 
@@ -142,6 +155,17 @@ Route::prefix('v1')->group(function () {
             Route::get('holidays', [AdminScheduleController::class, 'holidays']);
             Route::post('holidays', [AdminScheduleController::class, 'storeHoliday']);
             Route::delete('holidays/{holiday}', [AdminScheduleController::class, 'destroyHoliday']);
+
+            Route::get('tax-rates', [AdminBillingController::class, 'taxRates']);
+            Route::post('tax-rates', [AdminBillingController::class, 'storeTaxRate']);
+            Route::get('prescription-fee', [AdminBillingController::class, 'prescriptionFee']);
+            Route::put('prescription-fee', [AdminBillingController::class, 'updatePrescriptionFee']);
+            Route::get('discount-codes', [AdminBillingController::class, 'discountCodes']);
+            Route::post('discount-codes', [AdminBillingController::class, 'storeDiscountCode']);
+            Route::patch('discount-codes/{code}', [AdminBillingController::class, 'updateDiscountCode']);
+
+            Route::get('refunds', [AdminRefundController::class, 'index']);
+            Route::post('payments/{payment}/refunds', [AdminRefundController::class, 'store']);
 
             Route::get('booking-policy', [AdminBookingPolicyController::class, 'show']);
             Route::put('booking-policy', [AdminBookingPolicyController::class, 'update']);

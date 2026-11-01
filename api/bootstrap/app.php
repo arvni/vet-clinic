@@ -2,6 +2,7 @@
 
 use App\Http\Middleware\EnsureUserIsActive;
 use App\Http\Middleware\SetLocale;
+use App\Modules\Payments\Console\ReconcilePayments;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
@@ -15,7 +16,10 @@ return Application::configure(basePath: dirname(__DIR__))
         commands: __DIR__.'/../routes/console.php',
         health: '/up',
     )
+    ->withCommands([ReconcilePayments::class])
     ->withMiddleware(function (Middleware $middleware) {
+        // Behind the CDN: without this every visitor looks like one IP to the rate limiters.
+        $middleware->trustProxies(at: env('TRUSTED_PROXIES', '*'));
         $middleware->api(prepend: [SetLocale::class]);
         $middleware->alias([
             'active' => EnsureUserIsActive::class,

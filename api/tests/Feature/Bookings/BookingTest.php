@@ -1,7 +1,6 @@
 <?php
 
 use App\Models\User;
-use App\Modules\Bookings\BookingPolicy;
 use App\Modules\Bookings\Models\Booking;
 use App\Modules\Catalog\Models\Service;
 use App\Modules\Identity\Role;
@@ -178,23 +177,6 @@ it('keeps the policy admin-only', function () {
     $vet = $this->vet->createToken('staff-spa', ['staff'])->plainTextToken;
 
     $this->withToken($vet)->putJson('/api/v1/admin/booking-policy', ['cancel_hours' => 1, 'reschedule_hours' => 1])->assertForbidden();
-});
-
-it('owes the home fee back only when paid and not dispatched', function () {
-    $this->withToken(User::factory()->staff(Role::Admin)->create()->createToken('staff-spa', ['staff'])->plainTextToken)
-        ->putJson('/api/v1/admin/booking-policy', ['cancel_hours' => 0, 'reschedule_hours' => 0]);
-    $id = book($this, ['location' => 'home', 'address_id' => $this->address->id])->json('data.id');
-    $booking = Booking::findOrFail($id);
-
-    $booking->update(['status' => Booking::CONFIRMED]);
-    expect(app(BookingPolicy::class)->refundDue($booking))->toBe(5_000_000);
-
-    $booking->update(['dispatched_at' => now()]);
-    expect(app(BookingPolicy::class)->refundDue($booking))->toBe(0);
-
-    $booking->update(['status' => Booking::PENDING_PAYMENT, 'dispatched_at' => null]);
-    $this->withToken($this->ownerToken)->postJson("/api/v1/bookings/{$id}/cancel")
-        ->assertOk()->assertJsonPath('data.refund_due.rials', '0');
 });
 
 it('reschedules within the window and keeps the price', function () {

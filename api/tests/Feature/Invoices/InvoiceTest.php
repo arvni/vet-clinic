@@ -6,8 +6,11 @@ use App\Modules\Catalog\Models\Service;
 use App\Modules\Identity\Role;
 use App\Modules\Invoices\InvoiceException;
 use App\Modules\Invoices\InvoiceService;
+use App\Modules\Invoices\Models\DiscountCode;
 use App\Modules\Invoices\Models\Invoice;
 use App\Modules\Invoices\Models\InvoiceLine;
+use App\Modules\Invoices\Models\TaxRate;
+use App\Modules\Invoices\TaxRates;
 use App\Modules\Pets\Models\Pet;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Carbon;
@@ -164,4 +167,151 @@ it('keeps invoices private and staff tools closed', function () {
     $this->withToken($other)->getJson('/api/v1/invoices')->assertJsonCount(0, 'data');
     $this->withToken($this->ownerToken)->postJson("/api/v1/staff/invoices/{$invoice->id}/issue")->assertForbidden();
     $this->withToken($vet)->postJson("/api/v1/staff/invoices/{$invoice->id}/issue")->assertForbidden();
+});
+
+describe('pricing', function () {
+    beforeEach(function () {
+        TaxRate::create(['category' => 'general', 'basis_points' => 1000, 'effective_from' => '2026-03-21']);
+        $this->adminToken = User::factory()->staff(Role::Admin)->create()->createToken('staff-spa', ['staff'])->plainTextToken;
+    });
+
+    it('charges VAT per line by tax category', function () {
+        TaxRate::create(['category' => 'exempt_med', 'basis_points' => 0, 'effective_from' => '2026-03-21']);
+        $this->service->update(['tax_category' => 'exempt_med']);
+
+        $invoice = app(InvoiceService::class)->forBooking($this->booking->fresh());
+
+        // Exempt visit, 10% on the 5,000,000 home-visit fee.
+        expect($invoice->vat_rials)->toBe(500_000)->and($invoice->total_rials)->toBe(15_500_000);
+    });
+
+    it('falls back to the general rate and uses the rate in force', function () {
+        TaxRate::create(['category' => 'general', 'basis_points' => 1200, 'effective_from' => '2027-03-21']);
+        $rates = app(TaxRates::class);
+
+        expect($rates->basisPoints('unknown'))->toBe(1000)
+            ->and($rates->basisPoints(null, Carbon::parse('2027-04-01')))->toBe(1200)
+            ->and($rates->basisPoints(null, Carbon::parse('2026-01-01')))->toBe(0);
+    });
+
+    it('keeps the VAT of an issued invoice when the rate changes', function () {
+        $invoice = $this->invoices->issue($this->invoices->forBooking($this->booking));
+
+        TaxRate::create(['category' => 'general', 'basis_points' => 2000, 'effective_from' => '2026-11-01']);
+
+        expect($invoice->fresh()->vat_rials)->toBe(1_500_000);
+    });
+
+    it('recalculates VAT and total as a line is added', function () {
+        $id = $this->invoices->forBooking($this->booking)->id;
+
+        $this->withToken($this->staffToken)->postJson("/api/v1/staff/invoices/{$id}/lines", ['description_fa' => 'دارو', 'unit_price_toman' => 100_000])
+            ->assertJsonPath('data.vat.rials', '1600000')
+            ->assertJsonPath('data.total.rials', '17600000')
+            ->assertJsonPath('data.lines.2.vat_percent', 10);
+    });
+
+    it('applies a code before VAT, spread over the lines', function () {
+        DiscountCode::create(['code' => 'VET10', 'basis_points' => 1000]);
+        $id = $this->invoices->forBooking($this->booking)->id;
+
+        $this->withToken($this->ownerToken)->postJson("/api/v1/invoices/{$id}/discount-code", ['code' => ' vet10 '])
+            ->assertOk()
+            ->assertJsonPath('data.discount.rials', '1500000')
+            ->assertJsonPath('data.vat.rials', '1350000')
+            ->assertJsonPath('data.total.rials', '14850000')
+            ->assertJsonPath('data.lines.0.discount.rials', '1000000')
+            ->assertJsonPath('data.lines.1.discount.rials', '500000');
+    });
+
+    it('keeps a percent discount in step with later line changes', function () {
+        DiscountCode::create(['code' => 'VET10', 'basis_points' => 1000]);
+        $invoice = $this->invoices->applyCode($this->invoices->forBooking($this->booking), 'VET10');
+
+        $this->invoices->addLine($invoice, ['kind' => 'other', 'description_fa' => 'x', 'quantity' => 1, 'unit_price_rials' => 5_000_000, 'vat_basis_points' => 1000]);
+
+        expect($invoice->fresh()->discount_rials)->toBe(2_000_000);
+    });
+
+    it('caps a fixed discount at the subtotal', function () {
+        $invoice = $this->invoices->applyStaffDiscount($this->invoices->forBooking($this->booking), null, 99_000_000, 'x', User::factory()->create()->id);
+
+        expect($invoice->discount_rials)->toBe(15_000_000)->and($invoice->total_rials)->toBe(0);
+    });
+
+    it('refuses dead codes', function (array $attributes) {
+        DiscountCode::create(['code' => 'DEAD', 'basis_points' => 1000, ...$attributes]);
+        $id = $this->invoices->forBooking($this->booking)->id;
+
+        $this->withToken($this->ownerToken)->postJson("/api/v1/invoices/{$id}/discount-code", ['code' => 'DEAD'])->assertStatus(409);
+    })->with([
+        'inactive' => [['active' => false]],
+        'expired' => [['ends_at' => '2026-01-01']],
+        'not started' => [['starts_at' => '2027-01-01']],
+    ]);
+
+    it('spends a limited code at issue, not when applied', function () {
+        $code = DiscountCode::create(['code' => 'ONCE', 'basis_points' => 1000, 'max_uses' => 1]);
+
+        $first = $this->invoices->applyCode($this->invoices->forBooking($this->booking), 'ONCE');
+        $second = $this->invoices->applyCode($this->invoices->forBooking(invoiceBooking($this)), 'ONCE');
+        expect($code->fresh()->used_count)->toBe(0);
+
+        $this->invoices->issue($first);
+        expect($code->fresh()->used_count)->toBe(1)
+            ->and(fn () => $this->invoices->issue($second))->toThrow(InvoiceException::class);
+    });
+
+    it('records who gave a staff discount and why', function () {
+        $id = $this->invoices->forBooking($this->booking)->id;
+
+        $this->withToken($this->staffToken)->postJson("/api/v1/staff/invoices/{$id}/discount", ['percent' => 20])->assertUnprocessable();
+        $this->withToken($this->staffToken)->postJson("/api/v1/staff/invoices/{$id}/discount", ['percent' => 20, 'toman' => 1, 'reason' => 'x'])->assertUnprocessable();
+        $this->withToken($this->staffToken)->postJson("/api/v1/staff/invoices/{$id}/discount", ['percent' => 20, 'reason' => 'مشتری قدیمی'])
+            ->assertOk()->assertJsonPath('data.discount.rials', '3000000');
+
+        $invoice = Invoice::findOrFail($id);
+        expect($invoice->discount_reason)->toBe('مشتری قدیمی')->and($invoice->discounted_by)->not->toBeNull();
+
+        $this->withToken($this->staffToken)->deleteJson("/api/v1/staff/invoices/{$id}/discount")->assertJsonPath('data.discount.rials', '0');
+    });
+
+    it('stops owners removing a staff discount or touching others', function () {
+        $invoice = $this->invoices->applyStaffDiscount($this->invoices->forBooking($this->booking), 2000, null, 'x', User::factory()->create()->id);
+        $other = User::factory()->create()->createToken('owner-spa', ['owner'])->plainTextToken;
+
+        $this->withToken($this->ownerToken)->deleteJson("/api/v1/invoices/{$invoice->id}/discount-code")->assertJsonPath('data.discount.rials', '3000000');
+        $this->withToken($other)->postJson("/api/v1/invoices/{$invoice->id}/discount-code", ['code' => 'X'])->assertNotFound();
+    });
+
+    it('credits a discounted invoice back to exactly its total', function () {
+        DiscountCode::create(['code' => 'VET10', 'basis_points' => 1000]);
+        $invoice = $this->invoices->issue($this->invoices->applyCode($this->invoices->forBooking($this->booking), 'VET10'));
+
+        $note = $this->invoices->creditNote($invoice);
+
+        expect($note->total_rials)->toBe($invoice->total_rials)
+            ->and($note->discount_rials)->toBe(1_500_000)
+            ->and($invoice->fresh()->status)->toBe(Invoice::CANCELLED);
+    });
+
+    it('freezes the discount on issue', function () {
+        $invoice = $this->invoices->issue($this->invoices->forBooking($this->booking));
+
+        expect(fn () => $this->invoices->removeDiscount($invoice->fresh()))->toThrow(InvoiceException::class)
+            ->and(fn () => $invoice->update(['discount_rials' => 1]))->toThrow(QueryException::class);
+    });
+
+    it('lets admins manage rates and codes', function () {
+        $this->withToken($this->adminToken)->postJson('/api/v1/admin/tax-rates', ['category' => 'general', 'percent' => 12, 'effective_from' => '2027-03-21'])
+            ->assertCreated()->assertJsonPath('data.percent', 12);
+        $this->withToken($this->adminToken)->postJson('/api/v1/admin/tax-rates', ['category' => 'general', 'percent' => 9, 'effective_from' => '2027-03-21'])
+            ->assertUnprocessable();
+
+        $id = $this->withToken($this->adminToken)->postJson('/api/v1/admin/discount-codes', ['code' => 'nowruz', 'toman' => 50000, 'max_uses' => 100])
+            ->assertCreated()->assertJsonPath('data.code', 'NOWRUZ')->assertJsonPath('data.fixed_rials', '500000')->json('data.id');
+
+        $this->withToken($this->adminToken)->patchJson("/api/v1/admin/discount-codes/{$id}", ['active' => false])->assertJsonPath('data.active', false);
+        $this->withToken($this->staffToken)->getJson('/api/v1/admin/tax-rates')->assertForbidden();
+    });
 });
